@@ -180,17 +180,18 @@ static int on_mount(
         zpos = -126;
     }
 
+    struct omxplayer_mgr_task p_element = {
+        .type = kUpdateView,
+        .responsehandle = NULL,
+    };
+    p_element.offset_x = offset_x;
+    p_element.offset_y = offset_y;
+    p_element.width = width;
+    p_element.height = height;
+    p_element.zpos = zpos;
     return cqueue_enqueue(
         &player->mgr->task_queue,
-        &(struct omxplayer_mgr_task) {
-            .type = kUpdateView,
-            .responsehandle = NULL,
-            .offset_x = offset_x,
-            .offset_y = offset_y,
-            .width = width,
-            .height = height,
-            .zpos = zpos
-        }
+        &p_element
     );
 }
 
@@ -203,16 +204,17 @@ static int on_unmount(
 ) {
     struct omxplayer_video_player *player = userdata;
 
+    struct omxplayer_mgr_task p_element = {
+        .type = kUpdateView,
+    };
+    p_element.offset_x = 0;
+    p_element.offset_y = 0;
+    p_element.width = 1;
+    p_element.height = 1;
+    p_element.zpos = -128;
     return cqueue_enqueue(
         &player->mgr->task_queue,
-        &(struct omxplayer_mgr_task) {
-            .type = kUpdateView,
-            .offset_x = 0,
-            .offset_y = 0,
-            .width = 1,
-            .height = 1,
-            .zpos = -128
-        }
+        &p_element
     );
 }
 
@@ -236,17 +238,18 @@ static int on_update_view(
         zpos = -126;
     }
 
+    struct omxplayer_mgr_task p_element = {
+        .type = kUpdateView,
+        .responsehandle = NULL,
+    };
+    p_element.offset_x = offset_x;
+    p_element.offset_y = offset_y;
+    p_element.width = width;
+    p_element.height = height;
+    p_element.zpos = zpos;
     return cqueue_enqueue(
         &player->mgr->task_queue,
-        &(struct omxplayer_mgr_task) {
-            .type = kUpdateView,
-            .responsehandle = NULL,
-            .offset_x = offset_x,
-            .offset_y = offset_y,
-            .width = width,
-            .height = height,
-            .zpos = zpos
-        }
+        &p_element
     );
 }
 
@@ -448,21 +451,22 @@ static void *mgr_entry(void *userdata) {
 
         // I'm the child!
         prctl(PR_SET_PDEATHSIG, SIGKILL);
+        char* args[] = {
+            "omxplayer.bin",
+            "--nohdmiclocksync",
+            "--no-osd",
+            "--no-keys",
+            "--loop",
+            "--layer", "-128",
+            "--win", "0,0,1,1",
+            "--orientation", orientation_str, 
+            "--dbus_name", dbus_name,
+            mgr->player->video_uri,
+            NULL
+        };
         int _ok = execvp(
             "omxplayer.bin",
-            (char*[]) {
-                "omxplayer.bin",
-                "--nohdmiclocksync",
-                "--no-osd",
-                "--no-keys",
-                "--loop",
-                "--layer", "-128",
-                "--win", "0,0,1,1",
-                "--orientation", orientation_str, 
-                "--dbus_name", dbus_name,
-                mgr->player->video_uri,
-                NULL
-            }
+            args
         );
 
         if (_ok != 0) {
@@ -675,24 +679,27 @@ static void *mgr_entry(void *userdata) {
             platch_respond_success_std(task.responsehandle, NULL);
 
             if (!has_sent_initialized_event) {
+                struct std_value event_value = {
+                    .type = kStdMap,
+                };
+                event_value.size = 4;
+                struct std_value keys[4] = {
+                    STDSTRING("event"),
+                    STDSTRING("duration"),
+                    STDSTRING("width"),
+                    STDSTRING("height")
+                };
+                event_value.keys = keys;
+                struct std_value values[4] = {
+                    STDSTRING("initialized"),
+                    STDINT64(is_stream? INT64_MAX : duration_us / 1000),
+                    STDINT32(video_width),
+                    STDINT32(video_height)
+                };
+                event_value.values = values;
                 platch_send_success_event_std(
                     mgr->player->event_channel_name,
-                    &(struct std_value) {
-                        .type = kStdMap,
-                        .size = 4,
-                        .keys = (struct std_value[4]) {
-                            STDSTRING("event"),
-                            STDSTRING("duration"),
-                            STDSTRING("width"),
-                            STDSTRING("height")
-                        },
-                        .values = (struct std_value[4]) {
-                            STDSTRING("initialized"),
-                            STDINT64(is_stream? INT64_MAX : duration_us / 1000),
-                            STDINT32(video_width),
-                            STDINT32(video_height)
-                        }
-                    }
+                    &event_value
                 );
 
                 has_sent_initialized_event = true;
@@ -1196,11 +1203,12 @@ static int on_set_looping(
         );
     }
 
-    return cqueue_enqueue(&player->mgr->task_queue, &(const struct omxplayer_mgr_task) {
+    struct omxplayer_mgr_task p_element = {
         .type = kSetLooping,
-        .loop = loop,
         .responsehandle = responsehandle
-    });
+    };
+    p_element.loop = loop;
+    return cqueue_enqueue(&player->mgr->task_queue, &p_element);
 }
 
 static int on_set_volume(
@@ -1225,11 +1233,12 @@ static int on_set_volume(
         );
     }
 
-    return cqueue_enqueue(&player->mgr->task_queue, &(const struct omxplayer_mgr_task) {
+    struct omxplayer_mgr_task p_element = {
         .type = kSetVolume,
-        .volume = volume,
         .responsehandle = responsehandle
-    });
+    };
+    p_element.volume = volume;
+    return cqueue_enqueue(&player->mgr->task_queue, &p_element);
 }
 
 static int on_play(
@@ -1242,10 +1251,11 @@ static int on_play(
     ok = get_player_from_map_arg(arg, &player, responsehandle);
     if (ok != 0) return ok;
 
-    return cqueue_enqueue(&player->mgr->task_queue, &(const struct omxplayer_mgr_task) {
+    const struct omxplayer_mgr_task p_element = {
         .type = kPlay,
         .responsehandle = responsehandle
-    });
+    };
+    return cqueue_enqueue(&player->mgr->task_queue, &p_element);
 }
 
 static int on_get_position(
@@ -1288,8 +1298,8 @@ static int on_seek_to(
 
     return cqueue_enqueue(&player->mgr->task_queue, &(const struct omxplayer_mgr_task) {
         .type = kSetPosition,
+        .responsehandle = responsehandle,
         .position = position,
-        .responsehandle = responsehandle
     });
 }
 
@@ -1403,14 +1413,15 @@ static int on_dispose_platform_view(
         player->view_id = -1;
 
         // hide omxplayer
-        cqueue_enqueue(&player->mgr->task_queue, &(struct omxplayer_mgr_task) {
+        struct omxplayer_mgr_task p_element = {
             .type = kUpdateView,
-            .offset_x = 0,
-            .offset_y = 0,
-            .width = 1,
-            .height = 1,
-            .zpos = -128
-        });
+        };
+        p_element.offset_x = 0;
+        p_element.offset_y = 0;
+        p_element.width = 1;
+        p_element.height = 1;
+        p_element.zpos = -128;
+        cqueue_enqueue(&player->mgr->task_queue, &p_element);
 
         return platch_respond_success_std(responsehandle, NULL);
     }

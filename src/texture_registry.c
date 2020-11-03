@@ -22,21 +22,21 @@ struct {
     .last_id = 0
 };
 
-static int add_texture_details(const struct texture_details const *details, int64_t *tex_id_out) {
+static int add_texture_details(const struct texture_details *const details, int64_t *tex_id_out) {
     if (texreg.n_entries == texreg.size_entries) {
         // expand the texture map
         size_t new_size = texreg.size_entries? texreg.size_entries*2 : 1;
         
-        struct texture_map_entry *new = realloc(texreg.entries, new_size*sizeof(struct texture_map_entry));
+        struct texture_map_entry *buf = realloc(texreg.entries, new_size*sizeof(struct texture_map_entry));
 
-        if (new == NULL) {
+        if (buf == NULL) {
             perror("[texture registry] Could not expand external texture map. realloc");
             return ENOMEM;
         }
 
-        memset(new + texreg.size_entries, 0, (new_size - texreg.size_entries)*sizeof(struct texture_map_entry));
+        memset(buf + texreg.size_entries, 0, (new_size - texreg.size_entries)*sizeof(struct texture_map_entry));
 
-        texreg.entries = new;
+        texreg.entries = buf;
         texreg.size_entries = new_size;
     }
 

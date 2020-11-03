@@ -177,27 +177,32 @@ int send_json(void) {
     *time = flutterpi.flutter.libflutter_engine.FlutterEngineGetCurrentTime();
 
     char *method = "test";
+    struct json_value array_values[] = {
+        {.type = kJsonString, .string_value = "array1"},
+        {.type = kJsonNumber, .number_value = 2}
+    };
+    struct json_value array =  {.type = kJsonArray, .size = 2};
+    array.array = array_values;
+    struct json_value argument_values[] = {
+        {.type = kJsonString, .string_value = "value1"},
+        {.type = kJsonTrue},
+        {.type = kJsonNumber, .number_value = -1000},
+        {.type = kJsonNumber, .number_value = -5.0005},
+        array,
+    };
+    char* argument_keys[] = {
+        "key1",
+        "key2",
+        "key3",
+        "key4",
+        "array"
+    };
     struct json_value argument = {
         .type = kJsonObject,
-        .size = 5,
-        .keys = (char*[]) {
-            "key1",
-            "key2",
-            "key3",
-            "key4",
-            "array"
-        },
-        .values = (struct json_value[]) {
-            {.type = kJsonString, .string_value = "value1"},
-            {.type = kJsonTrue},
-            {.type = kJsonNumber, .number_value = -1000},
-            {.type = kJsonNumber, .number_value = -5.0005},
-            {.type = kJsonArray, .size = 2, .array = (struct json_value[]) {
-                {.type = kJsonString, .string_value = "array1"},
-                {.type = kJsonNumber, .number_value = 2}
-            }}
-        },
     };
+    argument.size = 5;
+    argument.keys = argument_keys;
+    argument.values = argument_values;
 
     int ok = platch_call_json(TESTPLUGIN_CHANNEL_JSON, method, &argument, on_response_json, time);
     if (ok != 0) {
@@ -235,31 +240,45 @@ int send_std() {
     *time = flutterpi.flutter.libflutter_engine.FlutterEngineGetCurrentTime();
 
     char *method = "test";
+    uint8_t int_array_values[] = {0x00, 0x01, 0x02, 0x03, 0xFF};
+    struct std_value int_array = {
+        .type = kStdUInt8Array,
+    };
+    int_array.uint8array = int_array_values;
+    int_array.size = 5;
+    struct std_value list_values[] = {
+        {.type = kStdString, .string_value = "array1"},
+        {.type = kStdInt32, .int32_value = 2}
+    };
+    struct std_value list = {
+        .type = kStdList,
+    };
+    list.size = 2;
+    list.list = list_values;
+    struct std_value argument_values[] = {
+        {.type = kStdString, .string_value = "value1"},
+        {.type = kStdTrue},
+        {.type = kStdInt32, .int32_value = -1000},
+        {.type = kStdFloat64, .float64_value = -5.0005},
+        int_array,
+        {.type = kStdInt64, .int64_value = *time & 0x7FFFFFFFFFFFFFFF},
+        list,
+    };
+    struct std_value argument_keys[] = {
+        {.type = kStdString, .string_value = "key1"},
+        {.type = kStdString, .string_value = "key2"},
+        {.type = kStdString, .string_value = "key3"},
+        {.type = kStdString, .string_value = "key4"},
+        {.type = kStdInt32, .int32_value = 5},
+        {.type = kStdString, .string_value = "timestamp"},
+        {.type = kStdString, .string_value = "array"}
+    };
     struct std_value argument = {
         .type = kStdMap,
-        .size = 7,
-        .keys = (struct std_value[]) {
-            {.type = kStdString, .string_value = "key1"},
-            {.type = kStdString, .string_value = "key2"},
-            {.type = kStdString, .string_value = "key3"},
-            {.type = kStdString, .string_value = "key4"},
-            {.type = kStdInt32, .int32_value = 5},
-            {.type = kStdString, .string_value = "timestamp"},
-            {.type = kStdString, .string_value = "array"}
-        },
-        .values = (struct std_value[]) {
-            {.type = kStdString, .string_value = "value1"},
-            {.type = kStdTrue},
-            {.type = kStdInt32, .int32_value = -1000},
-            {.type = kStdFloat64, .float64_value = -5.0005},
-            {.type = kStdUInt8Array, .uint8array = (uint8_t[]) {0x00, 0x01, 0x02, 0x03, 0xFF}, .size = 5},
-            {.type = kStdInt64, .int64_value = *time & 0x7FFFFFFFFFFFFFFF},
-            {.type = kStdList, .size = 2, .list = (struct std_value[]) {
-                {.type = kStdString, .string_value = "array1"},
-                {.type = kStdInt32, .int32_value = 2}
-            }}
-        },
     };
+    argument.size = 7;
+    argument.keys = argument_keys;
+    argument.values = argument_values;
 
     platch_call_std(TESTPLUGIN_CHANNEL_STD, method, &argument, on_response_std, time);
     return 0;
@@ -274,13 +293,14 @@ int on_receive_json(char *channel, struct platch_obj *object, FlutterPlatformMes
     
     send_json();
 
-    return platch_respond(responsehandle, &(struct platch_obj) {
+    struct platch_obj response = {
         .codec = kJSONMethodCallResponse,
-        .success = true,
-        .json_result = {
-            .type = kJsonTrue
-        }
-    });
+    };
+    response.success = true;
+    response .json_result = {
+        .type = kJsonTrue
+    };
+    return platch_respond(responsehandle, &response);
 }
 int on_receive_std(char *channel, struct platch_obj *object, FlutterPlatformMessageResponseHandle *responsehandle) {
     printf("[test plugin] on_receive_std(channel: %s)\n"
@@ -291,15 +311,16 @@ int on_receive_std(char *channel, struct platch_obj *object, FlutterPlatformMess
 
     send_std();
     
+    struct platch_obj response = {
+        .codec = kStandardMethodCallResponse,
+    };
+    response.success = true;
+    response.std_result = {
+        .type = kStdTrue
+    };
     return platch_respond(
         responsehandle,
-        &(struct platch_obj) {
-            .codec = kStandardMethodCallResponse,
-            .success = true,
-            .std_result = {
-                .type = kStdTrue
-            }
-        }
+        &response
     );
 }
 int on_receive_ping(char *channel, struct platch_obj *object, FlutterPlatformMessageResponseHandle *responsehandle) {

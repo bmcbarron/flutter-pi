@@ -266,13 +266,15 @@ static int on_set_client(
         text_input.warned_about_autocorrect = true;
     }
 
+    struct platch_obj response = {
+            .codec = kJSONMethodCallResponse,
+    };
+      response      .success = true;
+        response.json_result = {.type = kJsonNull};
+        
     return platch_respond(
         responsehandle,
-        &(struct platch_obj) {
-            .codec = kJSONMethodCallResponse,
-            .success = true,
-            .json_result = {.type = kJsonNull}
-        }
+        &response
     );
 }
 
@@ -288,13 +290,14 @@ static int on_hide(
      */
 
     // do nothing since we use a physical keyboard.
+    struct platch_obj response {
+            .codec = kJSONMethodCallResponse,
+    };
+      response      .success = true;
+            response.json_result = {.type = kJsonNull};
     return platch_respond(
         responsehandle,
-        &(struct platch_obj) {
-            .codec = kJSONMethodCallResponse,
-            .success = true,
-            .json_result = {.type = kJsonNull}
-        }
+        &response
     );
 }
 
@@ -312,13 +315,14 @@ static int on_clear_client(
 
     text_input.connection_id = -1;
 
+    struct platch_obj response = {
+            .codec = kJSONMethodCallResponse,
+    };
+    response.success = true;
+    response.json_result = {.type = kJsonNull};
     return platch_respond(
         responsehandle,
-        &(struct platch_obj) {
-            .codec = kJSONMethodCallResponse,
-            .success = true,
-            .json_result = {.type = kJsonNull}
-        }
+        &response
     );
 }
 
@@ -437,13 +441,14 @@ static int on_set_editing_state(
     text_input.composing_base = composing_base;
     text_input.composing_extent = composing_extent;
 
+    struct platch_obj response = {
+        .codec = kJSONMethodCallResponse,
+    };
+    response.success = true;
+    response.json_result = {.type = kJsonNull};
     return platch_respond(
         responsehandle,
-        &(struct platch_obj) {
-            .codec = kJSONMethodCallResponse,
-            .success = true,
-            .json_result = {.type = kJsonNull}
-        }
+        &response
     );
 }
 
@@ -458,13 +463,14 @@ static int on_show(
      */
 
     // do nothing since we use a physical keyboard.
+    struct platch_obj response = {
+        .codec = kJSONMethodCallResponse,
+    };
+    response.success = true;
+    response.json_result = {.type = kJsonNull};
     return platch_respond(
         responsehandle,
-        &(struct platch_obj) {
-            .codec = kJSONMethodCallResponse,
-            .success = true,
-            .json_result = {.type = kJsonNull}
-        }
+        &response
     );
 }
 
@@ -472,13 +478,14 @@ static int on_request_autofill(
     struct platch_obj *object,
     FlutterPlatformMessageResponseHandle *responsehandle
 ) {
+    struct platch_obj response = {
+        .codec = kJSONMethodCallResponse,
+    };
+    response.success = true;
+    response.json_result = {.type = kJsonNull};
     return platch_respond(
         responsehandle,
-        &(struct platch_obj) {
-            .codec = kJSONMethodCallResponse,
-            .success = true,
-            .json_result = {.type = kJsonNull}
-        }
+        &response
     );
 }
 
@@ -486,13 +493,14 @@ static int on_set_editable_size_and_transform(
     struct platch_obj *object,
     FlutterPlatformMessageResponseHandle *responsehandle
 ) {
+    struct platch_obj response = {
+        .codec = kJSONMethodCallResponse,
+    };
+    response.success = true;
+    response.json_result = {.type = kJsonNull};
     return platch_respond(
         responsehandle,
-        &(struct platch_obj) {
-            .codec = kJSONMethodCallResponse,
-            .success = true,
-            .json_result = {.type = kJsonNull}
-        }
+        &response
     );
 }
 
@@ -500,13 +508,14 @@ static int on_set_style(
     struct platch_obj *object,
     FlutterPlatformMessageResponseHandle *responsehandle
 ) {
+    struct platch_obj response = {
+        .codec = kJSONMethodCallResponse,
+    };
+    response.success = true;
+    response.json_result = {.type = kJsonNull};
     return platch_respond(
         responsehandle,
-        &(struct platch_obj) {
-            .codec = kJSONMethodCallResponse,
-            .success = true,
-            .json_result = {.type = kJsonNull}
-        }
+        &response
     );
 }
 
@@ -514,13 +523,14 @@ static int on_finish_autofill_context(
     struct platch_obj *object,
     FlutterPlatformMessageResponseHandle *responsehandle
 ) {
+    struct platch_obj response = {
+        .codec = kJSONMethodCallResponse,
+    };
+    response.success = true;
+    response.json_result = {.type = kJsonNull};
     return platch_respond(
         responsehandle,
-        &(struct platch_obj) {
-            .codec = kJSONMethodCallResponse,
-            .success = true,
-            .json_result = {.type = kJsonNull}
-        }
+        &response
     );
 }
 
@@ -562,35 +572,41 @@ static int client_update_editing_state(
     double composing_base,
     double composing_extent
 ) {
+    struct json_value argument = {
+            .type = kJsonArray,
+    };
+    argument.size = 2;
+    struct json_value object_value = {.type = kJsonObject};
+    object_value.size = 7;
+    char* object_keys[7] = {
+                "text", "selectionBase", "selectionExtent", "selectionAffinity",
+                "selectionIsDirectional", "composingBase", "composingExtent"
+            };
+    object_value.keys = object_keys;
+    struct json_value affinity = {
+        .type = kJsonString,
+        .string_value = selection_affinity_is_downstream ?
+            "TextAffinity.downstream" : "TextAffinity.upstream"
+    };
+    struct json_value object_values[7] = {
+        {.type = kJsonString, .string_value = text},
+        {.type = kJsonNumber, .number_value = selection_base},
+        {.type = kJsonNumber, .number_value = selection_extent},
+        affinity,
+        {.type = selection_is_directional? kJsonTrue : kJsonFalse},
+        {.type = kJsonNumber, .number_value = composing_base},
+        {.type = kJsonNumber, .number_value = composing_extent}
+    };
+    object_value.values = object_values;
+    struct json_value array_values[2] = {
+        {.type = kJsonNumber, .number_value = connection_id},
+        object_value
+    };
+    argument.array = array_values;
     return platch_call_json(
         TEXT_INPUT_CHANNEL,
         "TextInputClient.updateEditingState",
-        &(struct json_value) {
-            .type = kJsonArray,
-            .size = 2,
-            .array = (struct json_value[2]) {
-                {.type = kJsonNumber, .number_value = connection_id},
-                {.type = kJsonObject, .size = 7,
-                    .keys = (char*[7]) {
-                        "text", "selectionBase", "selectionExtent", "selectionAffinity",
-                        "selectionIsDirectional", "composingBase", "composingExtent"
-                    },
-                    .values = (struct json_value[7]) {
-                        {.type = kJsonString, .string_value = text},
-                        {.type = kJsonNumber, .number_value = selection_base},
-                        {.type = kJsonNumber, .number_value = selection_extent},
-                        {
-                            .type = kJsonString,
-                            .string_value = selection_affinity_is_downstream ?
-                                "TextAffinity.downstream" : "TextAffinity.upstream"
-                        },
-                        {.type = selection_is_directional? kJsonTrue : kJsonFalse},
-                        {.type = kJsonNumber, .number_value = composing_base},
-                        {.type = kJsonNumber, .number_value = composing_extent}
-                    }
-                }
-            }
-        },
+        &argument,
         NULL,
         NULL
     );
@@ -615,17 +631,19 @@ int client_perform_action(
         (action == kTextInputActionEmergencyCall) ? "TextInputAction.emergencyCall" :
         "TextInputAction.newline";
 
+    struct json_value argument = {
+        .type = kJsonArray,
+    };
+    argument.size = 2;
+    struct json_value argument_array[2] = {
+        {.type = kJsonNumber, .number_value = connection_id},
+        {.type = kJsonString, .string_value = action_str}
+    };
+    argument.array = argument_array;
     return platch_call_json(
         TEXT_INPUT_CHANNEL,
         "TextInputClient.performAction",
-        &(struct json_value) {
-            .type = kJsonArray,
-            .size = 2,
-            .array = (struct json_value[2]) {
-                {.type = kJsonNumber, .number_value = connection_id},
-                {.type = kJsonString, .string_value = action_str}
-            }
-        },
+        &argument,
         NULL,
         NULL
     );
@@ -640,28 +658,33 @@ int client_perform_private_command(
         return EINVAL;
     }
 
+    char* keys[2] = {
+                        "action",
+                        "data"
+                    };
+    struct json_value values[2] = {
+        {.type = kJsonString, .string_value = action},
+        *data
+    };
+    struct json_value map = {
+        .type = kJsonObject
+    };
+    map. size = 2;
+    map.keys = keys;
+    map.values = values;
+    struct json_value array[2] = {
+        {.type = kJsonNumber, .number_value = connection_id},
+        map
+    };
+    struct json_value argument = {
+        .type = kJsonArray,
+    };
+    argument.size = 2;
+    argument.array = array;
     return platch_call_json(
         TEXT_INPUT_CHANNEL,
         "TextInputClient.performPrivateCommand",
-        &(struct json_value) {
-            .type = kJsonArray,
-            .size = 2,
-            .array = (struct json_value[2]) {
-                {.type = kJsonNumber, .number_value = connection_id},
-                {
-                    .type = kJsonObject,
-                    .size = 2,
-                    .keys = (char*[2]) {
-                        "action",
-                        "data"
-                    },
-                    .values = (struct json_value[2]) {
-                        {.type = kJsonString, .string_value = action},
-                        *data
-                    }
-                }
-            }
-        },
+        &argument,
         NULL,
         NULL
     );
@@ -673,50 +696,57 @@ int client_update_floating_cursor(
     double x,
     double y
 ) {
+    struct json_value argument = {
+        .type = kJsonArray
+    };
+    argument.size = 3;
+    struct json_value map_value = {
+            .type = kJsonObject,
+    };
+    map_value .size = 2;
+    char* map_keys[2] = {
+        "X",
+        "Y"
+    };
+    struct json_value map_values[2] = {
+        {.type = kJsonNumber, .number_value = x},
+        {.type = kJsonNumber, .number_value = y}
+    };
+    map_value .keys = map_keys;
+    map_value.values = map_values;
+    struct json_value array[3] = {
+        {.type = kJsonNumber, .number_value = connection_id},
+        {
+            .type = kJsonString,
+            .string_value = text_cursor_action == kFloatingCursorDragStateStart ? "FloatingCursorDragState.start" :
+                text_cursor_action == kFloatingCursorDragStateUpdate ? "FloatingCursorDragState.update" :
+                "FloatingCursorDragState.end"
+        },
+        map_value,
+    };
+    argument.array = array;
     return platch_call_json(
         TEXT_INPUT_CHANNEL,
         "TextInputClient.updateFloatingCursor",
-        &(struct json_value) {
-            .type = kJsonArray,
-            .size = 3,
-            .array = (struct json_value[3]) {
-                {.type = kJsonNumber, .number_value = connection_id},
-                {
-                    .type = kJsonString,
-                    .string_value = text_cursor_action == kFloatingCursorDragStateStart ? "FloatingCursorDragState.start" :
-                        text_cursor_action == kFloatingCursorDragStateUpdate ? "FloatingCursorDragState.update" :
-                        "FloatingCursorDragState.end"
-                },
-                {
-                    .type = kJsonObject,
-                    .size = 2,
-                    .keys = (char*[2]) {
-                        "X",
-                        "Y"
-                    },
-                    .values = (struct json_value[2]) {
-                        {.type = kJsonNumber, .number_value = x},
-                        {.type = kJsonNumber, .number_value = y}
-                    }
-                }
-            }
-        },
+        &argument,
         NULL,
         NULL
     );
 }
 
 int client_on_connection_closed(double connection_id) {
+    struct json_value argument = {
+            .type = kJsonArray,
+    };
+    argument      .size = 1;
+    struct json_value array_values[1] = {
+        {.type = kJsonNumber, .number_value = connection_id}    
+    };
+    argument.array = array_values;
     return platch_call_json(
         TEXT_INPUT_CHANNEL,
         "TextInputClient.onConnectionClosed",
-        &(struct json_value) {
-            .type = kJsonArray,
-            .size = 1,
-            .array = (struct json_value[1]) {
-                {.type = kJsonNumber, .number_value = connection_id}
-            }
-        },
+        &argument,
         NULL,
         NULL
     );
@@ -727,18 +757,20 @@ int client_show_autocorrection_prompt_rect(
     double start,
     double end
 ) {
+    struct json_value argument = {
+        .type = kJsonArray,
+    };
+    argument.size = 3;
+    struct json_value array_values[3] = {
+        {.type = kJsonNumber, .number_value = connection_id},
+        {.type = kJsonNumber, .number_value = start},
+        {.type = kJsonNumber, .number_value = end}
+    };
+    argument.array = array_values;
     return platch_call_json(
         TEXT_INPUT_CHANNEL,
         "TextInputClient.showAutocorrectionPromptRect",
-        &(struct json_value) {
-            .type = kJsonArray,
-            .size = 3,
-            .array = (struct json_value[3]) {
-                {.type = kJsonNumber, .number_value = connection_id},
-                {.type = kJsonNumber, .number_value = start},
-                {.type = kJsonNumber, .number_value = end}
-            }
-        },
+        &argument,
         NULL,
         NULL
     );

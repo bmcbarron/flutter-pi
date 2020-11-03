@@ -47,8 +47,8 @@ struct plane_data {
 struct compositor compositor = {
 	.drmdev = NULL,
 	.cbs = CPSET_INITIALIZER(CPSET_DEFAULT_MAX_SIZE),
-	.has_applied_modeset = false,
 	.should_create_window_surface_backing_store = true,
+	.has_applied_modeset = false,
 	.stale_rendertargets = CPSET_INITIALIZER(CPSET_DEFAULT_MAX_SIZE),
 	.do_blocking_atomic_commits = false
 };
@@ -144,8 +144,10 @@ static uint32_t gbm_bo_get_drm_fb_id(struct gbm_bo *bo) {
 		if (flags)
 			fprintf(stderr, "drm_fb_get_from_bo: modifiers failed!\n");
 		
-		memcpy(handles, (uint32_t [4]){gbm_bo_get_handle(bo).u32,0,0,0}, 16);
-		memcpy(strides, (uint32_t [4]){gbm_bo_get_stride(bo),0,0,0}, 16);
+		uint32_t handles_src[4] = {gbm_bo_get_handle(bo).u32,0,0,0};
+		memcpy(handles, handles_src, 16);
+		uint32_t strides_src[4] = {gbm_bo_get_stride(bo),0,0,0};
+		memcpy(strides, strides_src, 16);
 		memset(offsets, 0, 16);
 
 		ok = drmModeAddFB2(flutterpi.drm.drmdev->fd, width, height, format, handles, strides, offsets, &fb->fb_id, 0);
@@ -179,13 +181,14 @@ static int create_drm_rbo(
 	eglGetError();
 	glGetError();
 
-	fbo.egl_image = flutterpi.egl.createDRMImageMESA(flutterpi.egl.display, (const EGLint[]) {
+  const EGLint lint[] = {
 		EGL_WIDTH, width,
 		EGL_HEIGHT, height,
 		EGL_DRM_BUFFER_FORMAT_MESA, EGL_DRM_BUFFER_FORMAT_ARGB32_MESA,
 		EGL_DRM_BUFFER_USE_MESA, EGL_DRM_BUFFER_USE_SCANOUT_MESA,
 		EGL_NONE
-	});
+	};
+	fbo.egl_image = flutterpi.egl.createDRMImageMESA(flutterpi.egl.display, lint);
 	if ((egl_error = eglGetError()) != EGL_SUCCESS) {
 		fprintf(stderr, "[compositor] error creating DRM EGL Image for flutter backing store, eglCreateDRMImageMESA: %ld\n", egl_error);
 		return EINVAL;
@@ -890,20 +893,17 @@ static bool on_create_backing_store(
 	}
 
 	store->target = target;
-	store->flutter_backing_store = (FlutterBackingStore) {
+	FlutterBackingStore backing_store = {
 		.struct_size = backing_store_out->struct_size,
+		.user_data = store,
 		.type = kFlutterBackingStoreTypeOpenGL,
-		.open_gl = {
-			.type = kFlutterOpenGLTargetTypeFramebuffer,
-			.framebuffer = {
-				.target = GL_BGRA8_EXT,
-				.name = target->gl_fbo_id,
-				.destruction_callback = on_destroy_backing_store_gl_fb,
-				.user_data = store
-			}
-		},
-		.user_data = store
 	};
+	backing_store.open_gl.type = kFlutterOpenGLTargetTypeFramebuffer;
+	backing_store.open_gl.framebuffer.target = GL_BGRA8_EXT;
+	backing_store.open_gl.framebuffer.name = target->gl_fbo_id;
+	backing_store.open_gl.framebuffer.destruction_callback = on_destroy_backing_store_gl_fb;
+	backing_store.open_gl.framebuffer.user_data = store;
+	store->flutter_backing_store = backing_store;
 
 	memcpy(backing_store_out, &store->flutter_backing_store, sizeof(FlutterBackingStore));
 
@@ -1695,8 +1695,8 @@ int compositor_set_cursor_pos(int x, int y) {
 
 const FlutterCompositor flutter_compositor = {
 	.struct_size = sizeof(FlutterCompositor),
+	.user_data = &compositor,
 	.create_backing_store_callback = on_create_backing_store,
 	.collect_backing_store_callback = on_collect_backing_store,
 	.present_layers_callback = on_present_layers,
-	.user_data = &compositor
 };

@@ -580,6 +580,7 @@ int platch_decode_value_std(uint8_t **pbuffer, size_t *premaining, struct std_va
 
 	return 0;
 }
+
 int platch_decode_value_json(char *message, size_t size, jsmntok_t **pptoken, size_t *ptokensremaining, struct json_value *value_out) {
 	jsmntok_t *ptoken;
 	int result, ok;
@@ -595,7 +596,10 @@ int platch_decode_value_json(char *message, size_t size, jsmntok_t **pptoken, si
 
 		jsmn_init(&parser);
 		result = jsmn_parse(&parser, (const char *) message, (const size_t) size, tokens, JSON_DECODE_TOKENLIST_SIZE);
-		if (result < 0) return EBADMSG;
+		if (result < 0) {
+			fprintf(stderr, "platch_decode_value_json (jsmn_parse=%d)\n", result);
+			return EBADMSG;
+		}
 		
 		tokensremaining = (size_t) result;
 		ptoken = tokens;
@@ -610,6 +614,7 @@ int platch_decode_value_json(char *message, size_t size, jsmntok_t **pptoken, si
 		(*pptoken) += 1;
 		*ptokensremaining -= 1;
 
+		fprintf(stderr, "platch_decode_value_json (size=%d, ptoken=>type=%d)\n", size, ptoken->type);
 		switch (ptoken->type) {
 			case JSMN_UNDEFINED:
 				return EBADMSG;
@@ -702,6 +707,7 @@ int platch_decode(uint8_t *buffer, size_t size, enum platch_codec codec, struct 
 		return 0;
 	}
 	
+	fprintf(stderr, "platch_decode (codec=%d, size=%d)\n", codec, size);
 	object_out->codec = codec;
 	switch (codec) {
 		case kStringCodec: ;
@@ -730,9 +736,11 @@ int platch_decode(uint8_t *buffer, size_t size, enum platch_codec codec, struct 
 			ok = platch_decode_value_json((char *) buffer, size, NULL, NULL, &root_jsvalue);
 			if (ok != 0) return ok;
 
+      fprintf(stderr, "platch_decode:kJSONMethodCall (root_type=%d)\n", root_jsvalue.type);
 			if (root_jsvalue.type != kJsonObject) return EBADMSG;
 			
 			for (int i=0; i < root_jsvalue.size; i++) {
+				fprintf(stderr, "platch_decode:kJSONMethodCall (key=%s,type=%d)\n", root_jsvalue.keys[i], root_jsvalue.values[i].type);
 				if ((strcmp(root_jsvalue.keys[i], "method") == 0) && (root_jsvalue.values[i].type == kJsonString)) {
 					object_out->method = root_jsvalue.values[i].string_value;
 				} else if (strcmp(root_jsvalue.keys[i], "args") == 0) {
@@ -882,32 +890,36 @@ int platch_encode(struct platch_obj *object, uint8_t **buffer_out, size_t *size_
 				if (ok != 0) return ok;
 			}
 			break;
-		case kJSONMethodCall:
+		case kJSONMethodCall: {
 			jsroot.type = kJsonObject;
 			jsroot.size = 2;
-			jsroot.keys = (char*[]) {"method", "args"};
-			jsroot.values = (struct json_value[]) {
+			static const char* keys[] = {"method", "args"};
+			jsroot.keys = keys;
+			struct json_value values[] = {
 				{.type = kJsonString, .string_value = object->method},
 				object->json_arg
 			};
+			jsroot.values = values;
 
 			size = platch_calc_value_size_json(&jsroot);
 			size += 1;
-			break;
+			break; }
 		case kJSONMethodCallResponse:
 			jsroot.type = kJsonArray;
 			if (object->success) {
 				jsroot.size = 1;
-				jsroot.array = (struct json_value[]) {
+				struct json_value array[] = {
 					object->json_result
 				};
+				jsroot.array = array;
 			} else {
 				jsroot.size = 3;
-				jsroot.array = (struct json_value[]) {
+				struct json_value array[] = {
 					{.type = kJsonString, .string_value = object->error_code},
 					{.type = (object->error_msg != NULL) ? kJsonString : kJsonNull, .string_value = object->error_msg},
 					object->json_error_details
 				};
+				jsroot.array = array;
 			}
 
 			size = platch_calc_value_size_json(&jsroot);
@@ -1073,20 +1085,20 @@ int platch_send(char *channel, struct platch_obj *object, enum platch_codec resp
 int platch_call_std(char *channel, char *method, struct std_value *argument, platch_msg_resp_callback on_response, void *userdata) {
 	struct platch_obj object = {
 		.codec = kStandardMethodCall,
-		.method = method,
-		.std_arg = *argument
 	};
-	
+	object.method = method;
+  object.std_arg = *argument;
 	return platch_send(channel, &object, kStandardMethodCallResponse, on_response, userdata);
 }
 
 int platch_call_json(char *channel, char *method, struct json_value *argument, platch_msg_resp_callback on_response, void *userdata) {
-	return platch_send(channel,
-								&(struct platch_obj) {
+  struct platch_obj object = {
 									.codec = kJSONMethodCall,
-									.method = method,
-									.json_arg = *argument
-								},
+  };
+	object.method = method;
+	object.json_arg = *argument;
+	return platch_send(channel,
+								&object,
 								kJSONMethodCallResponse,
 								on_response,
 								userdata);
@@ -1110,11 +1122,12 @@ int platch_respond(FlutterPlatformMessageResponseHandle *handle, struct platch_o
 }
 
 int platch_respond_not_implemented(FlutterPlatformMessageResponseHandle *handle) {
+	struct platch_obj response = {
+  	.codec = kNotImplemented
+	};
 	return platch_respond(
 		(FlutterPlatformMessageResponseHandle *) handle,
-		&(struct platch_obj) {
-			.codec = kNotImplemented
-		});
+		&response);
 }
 
 /****************************
@@ -1123,13 +1136,14 @@ int platch_respond_not_implemented(FlutterPlatformMessageResponseHandle *handle)
 
 int platch_respond_success_std(FlutterPlatformMessageResponseHandle *handle,
 							   struct std_value *return_value) {
+  struct platch_obj response = {
+		.codec = kStandardMethodCallResponse,
+	};
+	response.success = true,
+	response.std_result = return_value? *return_value : STDNULL;
 	return platch_respond(
 		handle,
-		&(struct platch_obj) {
-			.codec = kStandardMethodCallResponse,
-			.success = true,
-			.std_result = return_value? *return_value : STDNULL
-		}
+		&response
 	);
 }
 
@@ -1137,13 +1151,14 @@ int platch_respond_error_std(FlutterPlatformMessageResponseHandle *handle,
 							 char *error_code,
 							 char *error_msg,
 							 struct std_value *error_details) {
-	return platch_respond(handle, &(struct platch_obj) {
+	struct platch_obj response = {
 		.codec = kStandardMethodCallResponse,
-		.success = false,
-		.error_code = error_code,
-		.error_msg = error_msg,
-		.std_error_details = error_details? *error_details : STDNULL
-	});
+	};
+  response.success = false;
+	response.error_code = error_code;
+	response.error_msg = error_msg;
+	response.std_error_details = error_details? *error_details : STDNULL;
+	return platch_respond(handle, &response);
 }
 
 /// Sends a platform message to `handle` with error code "illegalargument"
@@ -1172,14 +1187,15 @@ int platch_respond_native_error_std(FlutterPlatformMessageResponseHandle *handle
 
 int platch_respond_success_json(FlutterPlatformMessageResponseHandle *handle,
 								struct json_value *return_value) {
+	struct platch_obj response = {
+			.codec = kJSONMethodCallResponse,
+	};
+	response.success = true,
+	response.json_result = return_value? *return_value
+				: (struct json_value) {.type = kJsonNull};
 	return platch_respond(
 		handle,
-		&(struct platch_obj) {
-			.codec = kJSONMethodCallResponse,
-			.success = true,
-			.json_result = return_value? *return_value
-				: (struct json_value) {.type = kJsonNull}
-		}
+		&response
 	);
 }
 
@@ -1187,15 +1203,17 @@ int platch_respond_error_json(FlutterPlatformMessageResponseHandle *handle,
 							  char *error_code,
 							  char *error_msg,
 							  struct json_value *error_details) {
-	return platch_respond(handle, &(struct platch_obj) {
+	struct platch_obj response = {
 		.codec = kJSONMethodCallResponse,
-		.success = false,
-		.error_code = error_code,
-		.error_msg = error_msg,
-		.json_error_details = (error_details) ?
+	};
+	response.success = false;
+	response.error_code = error_code;
+	response.error_msg = error_msg;
+	response.json_error_details = (error_details) ?
 			*error_details :
-			(struct json_value) {.type = kJsonNull}
-	});
+			(struct json_value) {.type = kJsonNull};
+
+	return platch_respond(handle, &response);
 }
 
 int platch_respond_illegal_arg_json(FlutterPlatformMessageResponseHandle *handle,
@@ -1205,11 +1223,12 @@ int platch_respond_illegal_arg_json(FlutterPlatformMessageResponseHandle *handle
 
 int platch_respond_native_error_json(FlutterPlatformMessageResponseHandle *handle,
                                      int _errno) {
+	struct json_value error_details = {.type = kJsonNumber, .number_value = _errno};
 	return platch_respond_error_json(
 		handle,
 		"nativeerror",
 		strerror(_errno),
-		&(struct json_value) {.type = kJsonNumber, .number_value = _errno}
+		&error_details
 	);
 }
 
@@ -1220,21 +1239,19 @@ int platch_respond_success_pigeon(
 	FlutterPlatformMessageResponseHandle *handle,
 	struct std_value *return_value
 ) {
+	struct platch_obj response = {
+		.codec = kStandardMessageCodec,
+	};
+	response.std_value.type = kStdMap;
+	response.std_value.size = 1;
+	struct std_value keys[1] = {STDSTRING("result")};
+	response.std_value.keys = keys;
+  struct std_value null_value[1] = {STDNULL};
+	response.std_value.values = return_value != NULL ?
+			return_value : null_value;
 	return platch_respond(
 		handle,
-		&(struct platch_obj) {
-			.codec = kStandardMessageCodec,
-			.std_value = {
-				.type = kStdMap,
-				.size = 1,
-				.keys = (struct std_value[1]) {
-					STDSTRING("result")
-				},
-				.values = return_value != NULL ?
-					return_value :
-					(struct std_value[1]) {STDNULL}
-			}
-		}
+		&response
 	);
 }
 
@@ -1244,36 +1261,36 @@ int platch_respond_error_pigeon(
 	char *error_msg,
 	struct std_value *error_details
 ) {
+	struct platch_obj response = {
+			.codec = kStandardMessageCodec,
+	};
+	response.std_value.type = kStdMap;
+	response.std_value.size = 1;
+	struct std_value keys[1] = {STDSTRING("error")};
+	response.std_value.keys = keys;
+	struct std_value error = {
+		.type = kStdMap,
+	};
+  error.size = 3;
+	struct std_value error_keys[3] = {
+		STDSTRING("code"),
+		STDSTRING("message"),
+		STDSTRING("details")
+	};
+	error.keys = error_keys;
+	struct std_value error_values[3] = {
+		STDSTRING(error_code),
+		STDSTRING(error_msg),
+		error_details != NULL ?
+			*error_details :
+			STDNULL
+	};
+	error.values = error_values;
+	struct std_value errors[1] = {error};
+	response.std_value.values = errors;
 	return platch_respond(
 		handle,
-		&(struct platch_obj) {
-			.codec = kStandardMessageCodec,
-			.std_value = {
-				.type = kStdMap,
-				.size = 1,
-				.keys = (struct std_value[1]) {
-					STDSTRING("error")
-				},
-				.values = (struct std_value[1]) {
-					{
-						.type = kStdMap,
-						.size = 3,
-						.keys = (struct std_value[3]) {
-							STDSTRING("code"),
-							STDSTRING("message"),
-							STDSTRING("details")
-						},
-						.values = (struct std_value[3]) {
-							STDSTRING(error_code),
-							STDSTRING(error_msg),
-							error_details != NULL ?
-								*error_details :
-								STDNULL
-						}
-					}
-				}
-			}
-		}
+		&response
 	);
 }
 
@@ -1305,13 +1322,14 @@ int platch_respond_native_error_pigeon(
  * STANDARD EVENT CHANNELS *
  ***************************/
 int platch_send_success_event_std(char *channel, struct std_value *event_value) {
+	struct platch_obj object = {
+			.codec = kStandardMethodCallResponse,
+	};
+	object.success = true;
+	object.std_result = event_value? *event_value : STDNULL;
 	return platch_send(
 		channel,
-		&(struct platch_obj) {
-			.codec = kStandardMethodCallResponse,
-			.success = true,
-			.std_result = event_value? *event_value : STDNULL
-		},
+		&object,
 		0, NULL, NULL
 	);
 }
@@ -1320,15 +1338,16 @@ int platch_send_error_event_std(char *channel,
 							 	char *error_code,
 							 	char *error_msg,
 							 	struct std_value *error_details) {
+	struct platch_obj object = {
+		.codec = kStandardMethodCallResponse,
+	};
+	object.success = false;
+	object.error_code = error_code;
+	object.error_msg = error_msg;
+	object.std_error_details = error_details? *error_details : STDNULL;
 	return platch_send(
 		channel,
-		&(struct platch_obj) {
-			.codec = kStandardMethodCallResponse,
-			.success = false,
-			.error_code = error_code,
-			.error_msg = error_msg,
-			.std_error_details = error_details? *error_details : STDNULL
-		},
+		&object,
 		0, NULL, NULL
 	);
 }
@@ -1337,12 +1356,13 @@ int platch_send_error_event_std(char *channel,
  * JSON EVENT CHANNELS *
  ***********************/
 int platch_send_success_event_json(char *channel, struct json_value *event_value) {
+	struct platch_obj object ={
+		.codec = kJSONMethodCallResponse,
+	};
+	object.success = true;
+	object.json_result = event_value? *event_value : (struct json_value) {.type = kJsonNull};
 	return platch_send(channel,
-		&(struct platch_obj) {
-			.codec = kJSONMethodCallResponse,
-			.success = true,
-			.json_result = event_value? *event_value : (struct json_value) {.type = kJsonNull}
-		},
+		&object,
 		0, NULL, NULL
 	);
 }
@@ -1351,17 +1371,18 @@ int platch_send_error_event_json(char *channel,
 								 char *error_code,
 								 char *error_msg,
 								 struct json_value *error_details) {
+	struct platch_obj object = {
+		.codec = kJSONMethodCallResponse,
+	};
+	object.success = false;
+	object.error_code = error_code;
+	object.error_msg = error_msg;
+	object.json_error_details = error_details?
+		*error_details :
+		(struct json_value) {.type = kJsonNull};
 	return platch_send(
 		channel,
-		&(struct platch_obj) {
-			.codec = kJSONMethodCallResponse,
-			.success = false,
-			.error_code = error_code,
-			.error_msg = error_msg,
-			.json_error_details = error_details?
-				*error_details :
-				(struct json_value) {.type = kJsonNull}
-		},
+		&object,
 		0, NULL, NULL
 	);
 }

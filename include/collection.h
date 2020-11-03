@@ -387,7 +387,7 @@ static inline void *__cpset_next_pointer_locked(
 
 #define for_each_pointer_in_cpset(set, pointer) for ((pointer) = __cpset_next_pointer_locked(set, NULL); (pointer) != NULL; (pointer) = __cpset_next_pointer_locked(set, (pointer)))
 
-static inline void *memdup(const void *restrict src, const size_t n) {
+static inline void *memdup(const void *__restrict__ src, const size_t n) {
 	void *__restrict__ dest;
 
 	if ((src == NULL) || (n == 0)) return NULL;

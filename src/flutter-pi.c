@@ -26,6 +26,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <linux/input.h>
+#include <execinfo.h>
 
 #include <xf86drm.h>
 #include <xf86drmMode.h>
@@ -52,7 +53,7 @@
 #include <plugins/text_input.h>
 #include <plugins/raw_keyboard.h>
 
-const char const* usage ="\
+const char * const usage ="\
 flutter-pi - run flutter apps on your Raspberry Pi.\n\
 \n\
 USAGE:\n\
@@ -512,7 +513,8 @@ int flutterpi_post_platform_task(
 	}
 
 	if (pthread_self() != flutterpi.event_loop_thread) {
-		ok = write(flutterpi.wakeup_event_loop_fd, (uint8_t[8]) {0, 0, 0, 0, 0, 0, 0, 1}, 8);
+		uint8_t buf[8] = {0, 0, 0, 0, 0, 0, 0, 1};
+		ok = write(flutterpi.wakeup_event_loop_fd, buf, 8);
 		if (ok < 0) {
 			perror("[flutter-pi] Error arming main loop for platform task. write");
 			ok = errno;
@@ -595,7 +597,8 @@ int flutterpi_post_platform_task_with_time(
 	}
 
 	if (pthread_self() != flutterpi.event_loop_thread) {
-		ok = write(flutterpi.wakeup_event_loop_fd, (uint8_t[8]) {0, 0, 0, 0, 0, 0, 0, 1}, 8);
+		 uint8_t buf[8] = {0, 0, 0, 0, 0, 0, 0, 1};
+		ok = write(flutterpi.wakeup_event_loop_fd, buf, 8);
 		if (ok < 0) {
 			perror("[flutter-pi] Error arming main loop for platform task. write");
 			ok = errno;
@@ -648,7 +651,8 @@ int flutterpi_sd_event_add_io(
 	}
 
 	if (pthread_self() != flutterpi.event_loop_thread) {
-		ok = write(flutterpi.wakeup_event_loop_fd, (uint8_t[8]) {0, 0, 0, 0, 0, 0, 0, 1}, 8);
+		uint8_t buf[8] = {0, 0, 0, 0, 0, 0, 0, 1};
+		ok = write(flutterpi.wakeup_event_loop_fd, buf, 8);
 		if (ok < 0) {
 			perror("[flutter-pi] Error arming main loop for io callback. write");
 			ok = errno;
@@ -759,7 +763,7 @@ static int on_send_platform_message(
 
 int flutterpi_send_platform_message(
 	const char *channel,
-	const uint8_t *restrict message,
+	const uint8_t *__restrict__ message,
 	size_t message_size,
 	FlutterPlatformMessageResponseHandle *responsehandle
 ) {
@@ -829,7 +833,7 @@ int flutterpi_send_platform_message(
 
 int flutterpi_respond_to_platform_message(
 	FlutterPlatformMessageResponseHandle *handle,
-	const uint8_t *restrict message,
+	const uint8_t *__restrict__ message,
 	size_t message_size
 ) {
 	struct platform_message *msg;
@@ -1748,8 +1752,8 @@ static int init_application(void) {
 			.present = on_present,
 			.fbo_callback = fbo_callback,
 			.make_resource_current = on_make_resource_current,
-			.gl_proc_resolver = proc_resolver,
 			.surface_transformation = on_get_transformation,
+			.gl_proc_resolver = proc_resolver,
 			.gl_external_texture_frame_callback = texreg_gl_external_texture_frame_callback,
 		}
 	};
@@ -1817,8 +1821,8 @@ static int init_application(void) {
 
 	if (flutterpi.flutter.runtime_mode == kRelease) {
 		aot_source = (FlutterEngineAOTDataSource) {
-			.elf_path = flutterpi.flutter.app_elf_path,
-			.type = kFlutterEngineAOTDataSourceTypeElfPath
+			.type = kFlutterEngineAOTDataSourceTypeElfPath,
+			.elf_path = flutterpi.flutter.app_elf_path
 		};
 
 		engine_result = libflutter_engine->FlutterEngineCreateAOTData(&aot_source, &aot_data);
@@ -2192,28 +2196,32 @@ static int on_libinput_ready(sd_event_source *s, int fd, uint32_t revents, void 
 			if (codepoint) {
 				if (codepoint < 0x80) {
 					if (isprint(codepoint)) {
-						textin_on_utf8_char((uint8_t[1]) {codepoint});
+						 uint8_t c[1] = {codepoint};
+						textin_on_utf8_char(c);
 					}
 				} else if (codepoint < 0x800) {
-					textin_on_utf8_char((uint8_t[2]) {
+					 uint8_t c[2] = {
 						0xc0 | (codepoint >> 6),
 						0x80 | (codepoint & 0x3f)
-					});
+					};
+					textin_on_utf8_char(c);
 				} else if (codepoint < 0x10000) {
 					if (!(codepoint >= 0xD800 && codepoint < 0xE000) && !(codepoint == 0xFFFF)) {
-						textin_on_utf8_char((uint8_t[3]) {
+						 uint8_t c[3] = {
 							0xe0 | (codepoint >> 12),
 							0x80 | ((codepoint >> 6) & 0x3f),
 							0x80 | (codepoint & 0x3f)
-						});
+						};
+						textin_on_utf8_char(c);
 					}
 				} else if (codepoint < 0x110000) {
-					textin_on_utf8_char((uint8_t[4]) {
+					 uint8_t c[4] = {
 						0xf0 | (codepoint >> 18),
 						0x80 | ((codepoint >> 12) & 0x3f),
 						0x80 | ((codepoint >> 6) & 0x3f),
 						0x80 | (codepoint & 0x3f)
-					});
+					};
+					textin_on_utf8_char(c);
 				}
 			}
 			
@@ -2542,11 +2550,13 @@ static bool parse_cmd_args(int argc, char **argv) {
 	bool finished_parsing_options = false;
 	while (!finished_parsing_options) {
 		longopt_index = 0;
+		fprintf(stderr, "getopt_long %d\n", finished_parsing_options);
 		opt = getopt_long(argc, argv, "+i:o:r:d:h", long_options, &longopt_index);
-
+		fprintf(stderr, "opt: %d\n", opt);
 		switch (opt) {
 			case 0:
 				// flag was encountered. just continue
+				fprintf(stderr, "0\n");
 				break;
 			case 'i':
 				glob(optarg, GLOB_BRACE | GLOB_TILDE | (input_specified ? GLOB_APPEND : 0), NULL, &input_devices_glob);
@@ -2578,7 +2588,7 @@ static bool parse_cmd_args(int argc, char **argv) {
 				}
 				break;
 			
-			case 'r':
+			case 'r': {
 				errno = 0;
 				long rotation = strtol(optarg, NULL, 0);
 				if ((errno != 0) || ((rotation != 0) && (rotation != 90) && (rotation != 180) && (rotation != 270))) {
@@ -2594,9 +2604,9 @@ static bool parse_cmd_args(int argc, char **argv) {
 
 				flutterpi.view.rotation = rotation;
 				flutterpi.view.has_rotation = true;
-				break;
+				break; }
 			
-			case 'd': ;
+			case 'd': {
 				unsigned int width_mm, height_mm;
 
 				ok = sscanf(optarg, "%u,%u", &width_mm, &height_mm);
@@ -2608,7 +2618,7 @@ static bool parse_cmd_args(int argc, char **argv) {
 				flutterpi.display.width_mm = width_mm;
 				flutterpi.display.height_mm = height_mm;
 				
-				break;
+				break; }
 			
 			case 'h':
 				printf("%s", usage);
@@ -2620,10 +2630,12 @@ static bool parse_cmd_args(int argc, char **argv) {
 				return false;
 			
 			case -1:
+				fprintf(stderr, "finished\n");
 				finished_parsing_options = true;
 				break;
 			
 			default:
+				fprintf(stderr, "default\n");
 				break;
 		}
 	}
@@ -2655,31 +2667,37 @@ static bool parse_cmd_args(int argc, char **argv) {
 int init(int argc, char **argv) {
 	int ok;
 
+	fprintf(stderr, "parse_cmd_args\n");
 	ok = parse_cmd_args(argc, argv);
 	if (ok == false) {
 		return EINVAL;
 	}
 
+	fprintf(stderr, "setup_paths\n");
 	ok = setup_paths();
 	if (ok == false) {
 		return EINVAL;
 	}
 
+	fprintf(stderr, "init_main_loop\n");
 	ok = init_main_loop();
 	if (ok != 0) {
 		return ok;
 	}
 
+	fprintf(stderr, "init_display\n");
 	ok = init_display();
 	if (ok != 0) {
 		return ok;
 	}
 
+	fprintf(stderr, "init_user_input\n");
 	ok = init_user_input();
 	if (ok != 0) {
 		return ok;
 	}
 
+	fprintf(stderr, "init_application\n");
 	ok = init_application();
 	if (ok != 0) {
 		return ok;
@@ -2696,15 +2714,32 @@ void deinit() {
 	return;
 }
 
+void handler(int sig) {
+  void *array[10];
+  size_t size;
+
+  // get void*'s for all entries on the stack
+  size = backtrace(array, 10);
+
+  // print out all the frames to stderr
+  fprintf(stderr, "Error: signal %d:\n", sig);
+  backtrace_symbols_fd(array, size, STDERR_FILENO);
+  exit(1);
+}
 
 int main(int argc, char **argv) {
+	fprintf(stderr, "main");
+  signal(SIGSEGV, handler);
+
 	int ok;
 
+	fprintf(stderr, "init");
 	ok = init(argc, argv);
 	if (ok != 0) {
 		return EXIT_FAILURE;
 	}
 
+	fprintf(stderr, "run");
 	ok = run();
 	if (ok != 0) {
 		return EXIT_FAILURE;

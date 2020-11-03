@@ -1,8 +1,12 @@
 REAL_CFLAGS = -I./include $(shell pkg-config --cflags gbm libdrm glesv2 egl libsystemd libinput libudev xkbcommon) \
+  -I../firebase-cpp-sdk/app/src/include \
 	-DBUILD_TEXT_INPUT_PLUGIN \
 	-DBUILD_TEST_PLUGIN \
 	-DBUILD_OMXPLAYER_VIDEO_PLAYER_PLUGIN \
 	-O0 -ggdb \
+	-funwind-tables \
+	-fpermissive \
+	-w \
 	$(CFLAGS)
 
 REAL_LDFLAGS = \
@@ -23,12 +27,14 @@ SOURCES = src/flutter-pi.c \
 	src/collection.c \
 	src/cursor.c \
 	src/keyboard.c \
+	src/plugins/firebase.c \
 	src/plugins/services.c \
 	src/plugins/testplugin.c \
 	src/plugins/text_input.c \
 	src/plugins/raw_keyboard.c \
 	src/plugins/omxplayer_video_player.c
 
+CC = /usr/bin/g++
 OBJECTS = $(patsubst src/%.c,out/obj/%.o,$(SOURCES))
 
 all: out/flutter-pi

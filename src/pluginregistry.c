@@ -14,6 +14,7 @@
 
 #include <plugins/services.h>
 #include <plugins/raw_keyboard.h>
+#include <plugins/firebase.h>
 
 #ifdef BUILD_TEXT_INPUT_PLUGIN
 #	include <plugins/text_input.h>
@@ -51,6 +52,8 @@ struct plugin_registry {
 struct flutterpi_plugin hardcoded_plugins[] = {
 	{.name = "services",     .init = services_init, .deinit = services_deinit},
 	{.name = "raw_keyboard", .init = rawkb_init, .deinit = rawkb_deinit},
+
+	{.name = "firebase", .init = firebase_init, .deinit = firebase_deinit},
 
 #ifdef BUILD_TEXT_INPUT_PLUGIN
 	{.name = "text_input",   .init = textin_init, .deinit = textin_deinit},
@@ -108,6 +111,8 @@ int plugin_registry_init() {
 }
 
 int plugin_registry_on_platform_message(FlutterPlatformMessage *message) {
+  fprintf(stderr, "plugin_registry_on_platform_message(%s)\n", message->channel);
+
 	struct platch_obj_cb_data *data, data_copy;
 	struct platch_obj object;
 	int ok;
@@ -125,11 +130,13 @@ int plugin_registry_on_platform_message(FlutterPlatformMessage *message) {
 
 	ok = platch_decode((uint8_t*) message->message, message->message_size, data_copy.codec, &object);
 	if (ok != 0) {
+		fprintf(stderr, "platch_decode failed: %d\n", ok);
 		return ok;
 	}
 
 	ok = data_copy.callback((char*) message->channel, &object, (FlutterPlatformMessageResponseHandle*) message->response_handle); //, data->userdata);
 	if (ok != 0) {
+		fprintf(stderr, "data_copy.callback failed: %d\n", ok);
 		platch_free_obj(&object);
 		return ok;
 	}
@@ -145,6 +152,8 @@ int plugin_registry_set_receiver(
 	platch_obj_recv_callback callback
 	//void *userdata
 ) {
+  fprintf(stderr, "plugin_registry_set_receiver(%s)\n", channel);
+
 	struct platch_obj_cb_data *data;
 	char *channel_dup;
 
@@ -181,6 +190,7 @@ int plugin_registry_set_receiver(
 bool plugin_registry_is_plugin_present(
 	const char *plugin_name
 ) {
+	fprintf(stderr, "plugin_registry_is_plugin_present(%s)\n", plugin_name);
 	for (int i = 0; i < plugin_registry.n_plugins; i++) {
 		if (strcmp(plugin_registry.plugins[i].name, plugin_name) == 0) {
 			return true;
