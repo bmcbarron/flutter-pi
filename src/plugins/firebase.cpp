@@ -253,7 +253,23 @@ std::unique_ptr<Value> val(const firebase::Variant& value) {
     case firebase::Variant::Type::kTypeDouble: return val(value.double_value());
     case firebase::Variant::Type::kTypeBool: return val(value.bool_value());
     case firebase::Variant::Type::kTypeStaticString: return val(value.string_value());
+    case firebase::Variant::Type::kTypeMutableString: return val(value.string_value());
+    case firebase::Variant::Type::kTypeVector: {
+      auto result = std::unique_ptr<ValueList>(new ValueList());
+      for (auto const& v : value.vector()) {
+        result->add(val(v));
+      }
+      return result;
+    }
+    case firebase::Variant::Type::kTypeMap: {
+      auto result = std::unique_ptr<ValueMap>(new ValueMap());
+      for (auto const& [k, v] : value.map()) {
+        result->add(val(k), val(v));
+      }
+      return result;
+    }
   }
+  fprintf(stderr, "Error converting Variant type: %d\n", value.type());
   return val();
 }
 
@@ -296,12 +312,12 @@ std::optional<firebase::Variant> get_variant(std_value* args, char* key) {
   }
   switch (result->type) {
     case kStdNull: return firebase::Variant::Null();
-    case kStdInt32: return firebase::Variant(result->int32_value);
-    case kStdInt64: return firebase::Variant(result->int64_value);
-    case kStdFloat64: return firebase::Variant(result->float64_value);
+    case kStdInt32: return firebase::Variant::FromInt64(result->int32_value);
+    case kStdInt64: return firebase::Variant::FromInt64(result->int64_value);
+    case kStdFloat64: return firebase::Variant::FromDouble(result->float64_value);
     case kStdTrue: return firebase::Variant::True();
     case kStdFalse: return firebase::Variant::False();
-    case kStdString: return firebase::Variant(result->string_value);
+    case kStdString: return firebase::Variant::MutableStringFromStaticString(result->string_value);
   }
   return std::nullopt;
 }
@@ -491,59 +507,94 @@ int on_invoke_response(struct platch_obj *object, void *userdata) {
     return 0;
 }
 
-class ValueListenerImpl : public firebase::database::ValueListener {
+class SnapshotListener {
 public:
-  ValueListenerImpl(std::string channel, int id): channel(channel), id(id) {}
+  SnapshotListener(std::string channel, std::string eventType, int id): channel(channel), eventType(eventType), id(id) {}
 
-  virtual void OnValueChanged(const firebase::database::DataSnapshot& snapshot) {
+  void sendEvent(std::string eventType, const firebase::database::DataSnapshot& snapshot,
+                 std::optional<std::string> previousSiblingKey = std::nullopt) {
+    if (eventType != this->eventType) {
+      return;
+    }
     auto arguments = std::unique_ptr<ValueMap>(new ValueMap());
     auto snapshotMap = std::unique_ptr<ValueMap>(new ValueMap());
     snapshotMap->add(val("key"), val(snapshot.key()));
     snapshotMap->add(val("value"), val(snapshot.value()));
     arguments->add(val("handle"), val(id));
     arguments->add(val("snapshot"), std::move(snapshotMap));
-    //arguments->add(val("previousSiblingKey"), val(id));
+    if (previousSiblingKey) {
+      arguments->add(val("previousSiblingKey"), val(*previousSiblingKey));
+    }
     auto value = val(snapshot.value());
     auto convertedValue = value->build();
-    fprintf(stderr, "OnValueChanged(%s)\n  value:\n", snapshot.key());
+    fprintf(stderr, "sendEvent(%d, %s, %s)\n  value:\n", id, eventType.c_str(), snapshot.key());
     stdPrint(&convertedValue, 4);
     platch_call_std(const_cast<char*>(channel.c_str()), "Event", &arguments->build(),
                     on_invoke_response, nullptr);
   }
 
-  virtual void OnCancelled(const firebase::database::Error& error, const char* error_message) {
-    fprintf(stderr, "OnCancelled()\n");
+  void cancel(const firebase::database::Error& error) {
+    auto arguments = std::unique_ptr<ValueMap>(new ValueMap());
+    arguments->add(val("handle"), val(id));
+    arguments->add(val("error"), val(error));
+    fprintf(stderr, "cancel(%d)\n  error: %d\n", id, error);
+    platch_call_std(const_cast<char*>(channel.c_str()), "Error", &arguments->build(),
+                    on_invoke_response, nullptr);    
   }
 
 private:
   const std::string channel;
+  const std::string eventType;
   const int id;
+};
+
+class ValueListenerImpl : public firebase::database::ValueListener {
+public:
+  ValueListenerImpl(std::string channel, std::string eventType, int id)
+      : listener(channel, eventType, id) {}
+
+  virtual void OnValueChanged(const firebase::database::DataSnapshot& snapshot) {
+    listener.sendEvent(EVENT_TYPE_VALUE, snapshot);
+  }
+
+  virtual void OnCancelled(const firebase::database::Error& error, const char* error_message) {
+    listener.cancel(error);
+  }
+
+private:
+  SnapshotListener listener;
 };
 
 class ChildListenerImpl : public firebase::database::ChildListener {
 public:
+  ChildListenerImpl(std::string channel, std::string eventType, int id)
+      : listener(channel, eventType, id) {}
+
   virtual void OnChildAdded(const firebase::database::DataSnapshot& snapshot,
-                            const char* previous_sibling_key) {
-    fprintf(stderr, "OnChildAdded()\n");
+                            const char* previousSiblingKey) {
+    listener.sendEvent(EVENT_TYPE_CHILD_ADDED, snapshot, previousSiblingKey);
   }
 
   virtual void OnChildChanged(const firebase::database::DataSnapshot& snapshot,
-                              const char* previous_sibling_key) {
-    fprintf(stderr, "OnChildChanged()\n");
+                              const char* previousSiblingKey) {
+    listener.sendEvent(EVENT_TYPE_CHILD_CHANGED, snapshot, previousSiblingKey);
   }
 
   virtual void OnChildMoved(const firebase::database::DataSnapshot& snapshot,
-                            const char* previous_sibling_key) {
-    fprintf(stderr, "OnChildMoved()\n");
+                            const char* previousSiblingKey) {
+    listener.sendEvent(EVENT_TYPE_CHILD_MOVED, snapshot, previousSiblingKey);
   }
 
   virtual void OnChildRemoved(const firebase::database::DataSnapshot& snapshot) {
-    fprintf(stderr, "OnChildRemoved()\n");
+    listener.sendEvent(EVENT_TYPE_CHILD_REMOVED, snapshot);
   }
 
   virtual void OnCancelled(const firebase::database::Error& error, const char* error_message) {
-    fprintf(stderr, "OnCancelled()\n");
+    listener.cancel(error);
   }
+
+private:
+  SnapshotListener listener;
 };
 
 int next_listener_id = 0;
@@ -623,20 +674,38 @@ static int on_receive_database(
     int id = next_listener_id++;
     auto query = get_query(database, arg);
     auto eventType = get_string(arg, "eventType");
-    if (eventType.value_or("") == EVENT_TYPE_VALUE) {
-      auto listener = new ValueListenerImpl(channel, id);
-      value_listeners[id] = listener;
-      query.AddValueListener(listener);
-    } else {
-      auto listener = new ChildListenerImpl();
-      child_listeners[id] = listener;
-      query.AddChildListener(listener);
+    if (eventType) {
+      if (eventType == EVENT_TYPE_VALUE) {
+        auto listener = new ValueListenerImpl(channel, *eventType, id);
+        value_listeners[id] = listener;
+        query.AddValueListener(listener);
+      } else {
+        auto listener = new ChildListenerImpl(channel, *eventType, id);
+        child_listeners[id] = listener;
+        query.AddChildListener(listener);
+      }
+      return success(handle, val(id));
     }
-    return success(handle, val(id));
 
   } else if (strcmp(object->method, "Query#removeObserver") == 0) {
 
     auto id = get_int(arg, "handle");
+    auto query = get_query(database, arg);    
+    if (!id) {
+      // Fall through.
+    } else if (value_listeners.count(*id)) {
+      auto listener = value_listeners[*id];
+      value_listeners.erase(*id);
+      query.RemoveValueListener(listener);
+      delete listener;
+      return success(handle);
+    } else if (child_listeners.count(*id)) {
+      auto listener = child_listeners[*id];
+      child_listeners.erase(*id);
+      query.RemoveChildListener(listener);
+      delete listener;
+      return success(handle);
+    }
 
   }
 

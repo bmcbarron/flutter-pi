@@ -110,8 +110,10 @@ int plugin_registry_init() {
 	return 0;
 }
 
+pid_t gettid();
+
 int plugin_registry_on_platform_message(FlutterPlatformMessage *message) {
-  fprintf(stderr, "plugin_registry_on_platform_message(%s)\n", message->channel);
+  fprintf(stderr, "[%d] plugin_registry_on_platform_message(%s)\n", gettid(), message->channel);
 
 	struct platch_obj_cb_data *data, data_copy;
 	struct platch_obj object;

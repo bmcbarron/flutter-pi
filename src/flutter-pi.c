@@ -41,17 +41,17 @@
 #include <libinput.h>
 #include <libudev.h>
 #include <systemd/sd-event.h>
-#include <flutter_embedder.h>
+#include "flutter_embedder.h"
 
-#include <flutter-pi.h>
-#include <compositor.h>
-#include <keyboard.h>
-#include <platformchannel.h>
-#include <pluginregistry.h>
-#include <texture_registry.h>
-//#include <plugins/services.h>
-#include <plugins/text_input.h>
-#include <plugins/raw_keyboard.h>
+#include "flutter-pi.h"
+#include "compositor.h"
+#include "keyboard.h"
+#include "platformchannel.h"
+#include "pluginregistry.h"
+#include "texture_registry.h"
+//#include "plugins/services.h"
+#include "plugins/text_input.h"
+#include "plugins/raw_keyboard.h"
 
 const char * const usage ="\
 flutter-pi - run flutter apps on your Raspberry Pi.\n\
@@ -721,6 +721,8 @@ static void on_post_flutter_task(
 	}
 }
 
+pid_t gettid();
+
 /// platform messages
 static int on_send_platform_message(
 	void *userdata
@@ -729,20 +731,36 @@ static int on_send_platform_message(
 	FlutterEngineResult result;
 
 	msg = userdata;
+	fprintf(stderr, "[%d] on_send_platform_message(size=%d)\n", gettid(), msg->message_size);
 
 	if (msg->is_response) {
 		result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessageResponse(flutterpi.flutter.engine, msg->target_handle, msg->message, msg->message_size);
 	} else {
+		fprintf(stderr, "[%d] A\n", gettid());
+		FlutterPlatformMessage platform_msg;
+		platform_msg.struct_size = sizeof(FlutterPlatformMessage);
+		fprintf(stderr, "[%d] A2\n", gettid());
+		platform_msg.channel = msg->target_channel;
+		fprintf(stderr, "[%d] A3\n", gettid());
+		platform_msg.message = msg->message;
+		fprintf(stderr, "[%d] A4\n", gettid());
+		platform_msg.message_size = msg->message_size;
+		fprintf(stderr, "[%d] A5\n", gettid());
+		platform_msg.response_handle = msg->response_handle;
+  	fprintf(stderr, "[%d] B\n", gettid());
+		fprintf(stderr, "[%d] C\n", gettid());
 		result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessage(
 			flutterpi.flutter.engine,
-			&(FlutterPlatformMessage) {
-				.struct_size = sizeof(FlutterPlatformMessage),
-				.channel = msg->target_channel,
-				.message = msg->message,
-				.message_size = msg->message_size,
-				.response_handle = msg->response_handle
-			}
+			// &(FlutterPlatformMessage) {
+			// 	.struct_size = sizeof(FlutterPlatformMessage),
+			// 	.channel = msg->target_channel,
+			// 	.message = msg->message,
+			// 	.message_size = msg->message_size,
+			// 	.response_handle = msg->response_handle
+			// }
+			&platform_msg
 		);
+		fprintf(stderr, "[%d] D\n", gettid());
 	}
 
 	if (msg->message) {

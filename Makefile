@@ -9,6 +9,7 @@ REAL_CFLAGS = -I./include $(shell pkg-config --cflags gbm libdrm glesv2 egl libs
 	-fpermissive \
 	-w \
   -std=gnu++17 \
+	-Wno-psabi \
 	$(CFLAGS)
 
 REAL_LDFLAGS = \
@@ -30,7 +31,7 @@ REAL_LDFLAGS = \
 	$(LDFLAGS)
 
 SOURCES = src/flutter-pi.c \
-	src/platformchannel.c \
+	src/platformchannel.cpp \
 	src/pluginregistry.c \
 	src/texture_registry.c \
 	src/compositor.c \
@@ -45,7 +46,7 @@ SOURCES = src/flutter-pi.c \
 	src/plugins/raw_keyboard.c \
 	src/plugins/omxplayer_video_player.c
 
-EXTRA_HEADERS = include/jsmn.h
+EXTRA_HEADERS = include/jsmn.h include/intmem.h
 
 CC = /usr/bin/g++
 OBJECTS = $(patsubst src/%.c,out/obj/%.o,$(SOURCES))

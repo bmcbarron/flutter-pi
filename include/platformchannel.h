@@ -3,7 +3,10 @@
 
 #include <stdint.h>
 #include <errno.h>
-#include <flutter_embedder.h>
+#include <assert.h>
+#include <stdalign.h>
+
+#include "flutter_embedder.h"
 
 #define JSON_DECODE_TOKENLIST_SIZE  128
 
@@ -385,153 +388,5 @@ bool stdvalue_equals(struct std_value *a, struct std_value *b);
 struct std_value *stdmap_get(struct std_value *map, struct std_value *key);
 
 struct std_value *stdmap_get_str(struct std_value *map, char *key);
-
-static inline int _advance(uintptr_t *value, int n_bytes, size_t *remaining) {
-    if (remaining != NULL) {
-        if (*remaining < n_bytes) return EBADMSG;
-        *remaining -= n_bytes;
-    }
-
-    *value += n_bytes;
-    return 0;
-}
-static inline int _align(uintptr_t *value, int alignment, size_t *remaining) {
-    int diff;
-
-    alignment--;
-	diff = ((((*value) + alignment) | alignment) - alignment) - *value;
-
-    return _advance(value, diff, remaining);
-}
-static inline int _advance_size_bytes(uintptr_t *value, size_t size, size_t *remaining) {
-    if (size < 254) {
-		return _advance(value, 1, remaining);
-	} else if (size <= 0xFFFF) {
-		return _advance(value, 3, remaining);
-	} else {
-		return _advance(value, 5, remaining);
-    }
-}
-
-
-static inline int _write8(uint8_t **pbuffer, uint8_t value, size_t *remaining) {
-    if ((remaining != NULL) && (*remaining < 1)) {
-        return EBADMSG;
-    }
-
-	*(uint8_t*) *pbuffer = value;
-    
-    return _advance((uintptr_t*) pbuffer, 1, remaining);
-}
-static inline int _write16(uint8_t **pbuffer, uint16_t value, size_t *remaining) {
-    if ((remaining != NULL) && (*remaining < 2)) {
-        return EBADMSG;
-    }
-
-	*(uint16_t*) *pbuffer = value;
-    
-    return _advance((uintptr_t*) pbuffer, 2, remaining);
-}
-static inline int _write32(uint8_t **pbuffer, uint32_t value, size_t *remaining) {
-    if ((remaining != NULL) && (*remaining < 4)) {
-        return EBADMSG;
-    }
-
-	*(uint32_t*) *pbuffer = value;
-    
-    return _advance((uintptr_t*) pbuffer, 4, remaining);
-}
-static inline int _write64(uint8_t **pbuffer, uint64_t value, size_t *remaining) {
-	if ((remaining != NULL) && (*remaining < 8)) {
-        return EBADMSG;
-    }
-    
-    *(uint64_t*) *pbuffer = value;
-    
-    return _advance((uintptr_t*) pbuffer, 8, remaining);
-}
-
-static inline int _read8(uint8_t **pbuffer, uint8_t* value_out, size_t *remaining) {
-	if ((remaining != NULL) && (*remaining < 1)) {
-        return EBADMSG;
-    }
-
-    *value_out = *(uint8_t *) *pbuffer;
-
-    return _advance((uintptr_t*) pbuffer, 1, remaining);
-}
-static inline int _read16(uint8_t **pbuffer, uint16_t *value_out, size_t *remaining) {
-    if ((remaining != NULL) && (*remaining < 2)) {
-        return EBADMSG;
-    }
-
-    *value_out = *(uint16_t *) *pbuffer;
-	
-    return _advance((uintptr_t*) pbuffer, 2, remaining);
-}
-static inline int _read32(uint8_t **pbuffer, uint32_t *value_out, size_t *remaining) {
-	if ((remaining != NULL) && (*remaining < 4)) {
-        return EBADMSG;
-    }
-    
-    *value_out = *(uint32_t *) *pbuffer;
-
-    return _advance((uintptr_t*) pbuffer, 4, remaining);
-}
-static inline int _read64(uint8_t **pbuffer, uint64_t *value_out, size_t *remaining) {
-	if ((remaining != NULL) && (*remaining < 8)) {
-        return EBADMSG;
-    }
-    
-    *value_out = *(uint64_t *) *pbuffer;
-
-    return _advance((uintptr_t*) pbuffer, 8, remaining);
-}
-
-static inline int _writeSize(uint8_t **pbuffer, int size, size_t *remaining) {
-	int ok;
-
-    if (size < 254) {
-		return _write8(pbuffer, (uint8_t) size, remaining);
-	} else if (size <= 0xFFFF) {
-		ok = _write8(pbuffer, 0xFE, remaining);
-        if (ok != 0) return ok;
-
-		ok = _write16(pbuffer, (uint16_t) size, remaining);
-        if (ok != 0) return ok;
-	} else {
-		ok = _write8(pbuffer, 0xFF, remaining);
-        if (ok != 0) return ok;
-
-		ok = _write32(pbuffer, (uint32_t) size, remaining);
-        if (ok != 0) return ok;
-    }
-
-    return ok;
-}
-static inline int  _readSize(uint8_t **pbuffer, uint32_t *psize, size_t *remaining) {
-	int ok;
-    uint8_t size8;
-    uint16_t size16;
-
-	ok = _read8(pbuffer, &size8, remaining);
-    if (ok != 0) return ok;
-    
-    if (size8 <= 253) {
-        *psize = size8;
-
-        return 0;
-    } else if (size8 == 254) {
-		ok = _read16(pbuffer, &size16, remaining);
-        if (ok != 0) return ok;
-
-        *psize = size16;
-        return 0;
-	} else if (size8 == 255) {
-		return _read32(pbuffer, psize, remaining);
-	}
-
-    return 0;
-}
 
 #endif
