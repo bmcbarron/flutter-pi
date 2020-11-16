@@ -271,12 +271,14 @@ JSMN_API int jsmn_parse(jsmn_parser *parser, const char *js, const size_t len,
   int i;
   jsmntok_t *token;
   int count = parser->toknext;
-  fprintf(stderr, "jsmn_parse(%*s)\n", len, js);
+  //bpm fprintf(stderr, ">> jsmn_parse(%*s)\n  parser: (pos=%d, toksuper=%d, toknext=%d)\n", len, js,
+  //bpm        parser->pos, parser->toksuper, parser->toknext);
   for (; parser->pos < len && js[parser->pos] != '\0'; parser->pos++) {
     char c;
     jsmntype_t type;
 
     c = js[parser->pos];
+    //bpm fprintf(stderr, ">> jsmn_parse pos=%d c=%c)\n", parser->pos, c);
     switch (c) {
     case '{':
     case '[':
@@ -438,6 +440,8 @@ JSMN_API int jsmn_parse(jsmn_parser *parser, const char *js, const size_t len,
       return JSMN_ERROR_INVAL;
 #endif
     }
+    //bpm fprintf(stderr, "jsmn_parse\n  token[%d] = (type: %d)\n  token[%d] = (type: %d)\n",
+    //bpm        parser->toknext - 1, token->type, count - 1, tokens[count-1].type);
   }
 
   if (tokens != NULL) {

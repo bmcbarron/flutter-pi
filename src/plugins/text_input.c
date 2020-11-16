@@ -270,7 +270,7 @@ static int on_set_client(
             .codec = kJSONMethodCallResponse,
     };
       response      .success = true;
-        response.json_result = {.type = kJsonNull};
+        response.json_result.type = kJsonNull;
         
     return platch_respond(
         responsehandle,
@@ -290,11 +290,11 @@ static int on_hide(
      */
 
     // do nothing since we use a physical keyboard.
-    struct platch_obj response {
+    struct platch_obj response = {
             .codec = kJSONMethodCallResponse,
     };
       response      .success = true;
-            response.json_result = {.type = kJsonNull};
+            response.json_result.type = kJsonNull;
     return platch_respond(
         responsehandle,
         &response
@@ -319,7 +319,7 @@ static int on_clear_client(
             .codec = kJSONMethodCallResponse,
     };
     response.success = true;
-    response.json_result = {.type = kJsonNull};
+    response.json_result.type = kJsonNull;
     return platch_respond(
         responsehandle,
         &response
@@ -445,7 +445,7 @@ static int on_set_editing_state(
         .codec = kJSONMethodCallResponse,
     };
     response.success = true;
-    response.json_result = {.type = kJsonNull};
+    response.json_result.type = kJsonNull;
     return platch_respond(
         responsehandle,
         &response
@@ -467,7 +467,7 @@ static int on_show(
         .codec = kJSONMethodCallResponse,
     };
     response.success = true;
-    response.json_result = {.type = kJsonNull};
+    response.json_result.type = kJsonNull;
     return platch_respond(
         responsehandle,
         &response
@@ -482,7 +482,7 @@ static int on_request_autofill(
         .codec = kJSONMethodCallResponse,
     };
     response.success = true;
-    response.json_result = {.type = kJsonNull};
+    response.json_result.type = kJsonNull;
     return platch_respond(
         responsehandle,
         &response
@@ -497,7 +497,7 @@ static int on_set_editable_size_and_transform(
         .codec = kJSONMethodCallResponse,
     };
     response.success = true;
-    response.json_result = {.type = kJsonNull};
+    response.json_result.type = kJsonNull;
     return platch_respond(
         responsehandle,
         &response
@@ -512,7 +512,7 @@ static int on_set_style(
         .codec = kJSONMethodCallResponse,
     };
     response.success = true;
-    response.json_result = {.type = kJsonNull};
+    response.json_result.type = kJsonNull;
     return platch_respond(
         responsehandle,
         &response
@@ -527,7 +527,7 @@ static int on_finish_autofill_context(
         .codec = kJSONMethodCallResponse,
     };
     response.success = true;
-    response.json_result = {.type = kJsonNull};
+    response.json_result.type = kJsonNull;
     return platch_respond(
         responsehandle,
         &response

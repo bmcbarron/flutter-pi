@@ -671,6 +671,7 @@ int flutterpi_sd_event_add_io(
 	if (pthread_self() != flutterpi.event_loop_thread) {
 		pthread_mutex_unlock(&flutterpi.event_loop_mutex);
 	}
+	return 0;
 }
 
 /// flutter tasks

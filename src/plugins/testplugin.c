@@ -297,9 +297,8 @@ int on_receive_json(char *channel, struct platch_obj *object, FlutterPlatformMes
         .codec = kJSONMethodCallResponse,
     };
     response.success = true;
-    response .json_result = {
-        .type = kJsonTrue
-    };
+    response .json_result.type = kJsonTrue
+    ;
     return platch_respond(responsehandle, &response);
 }
 int on_receive_std(char *channel, struct platch_obj *object, FlutterPlatformMessageResponseHandle *responsehandle) {
@@ -315,9 +314,8 @@ int on_receive_std(char *channel, struct platch_obj *object, FlutterPlatformMess
         .codec = kStandardMethodCallResponse,
     };
     response.success = true;
-    response.std_result = {
-        .type = kStdTrue
-    };
+    response.std_result.type = kStdTrue
+    ;
     return platch_respond(
         responsehandle,
         &response

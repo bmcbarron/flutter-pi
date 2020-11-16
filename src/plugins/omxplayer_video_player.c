@@ -367,7 +367,8 @@ static void *mgr_entry(void *userdata) {
     bool has_scheduled_pause_time;
     bool is_stream;
     int ok;
-
+    pid_t me = 0;
+    
     mgr = userdata;
     q = &mgr->task_queue;
 
@@ -444,7 +445,7 @@ static void *mgr_entry(void *userdata) {
 
     // spawn the omxplayer process
     current_zpos = -128;
-    pid_t me = fork();
+    me = fork();
     if (me == 0) {
         char orientation_str[16] = {0};
         snprintf(orientation_str, sizeof orientation_str, "%d", task.orientation);

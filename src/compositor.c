@@ -89,6 +89,7 @@ static int destroy_stale_rendertargets(void) {
 	}
 
 	cpset_unlock(&compositor.stale_rendertargets);
+	return 0;
 }
 
 static void destroy_gbm_bo(
@@ -1672,6 +1673,7 @@ int compositor_apply_cursor_state(
 		compositor.cursor.y = 0;
 		compositor.cursor.is_enabled = false;
 	}
+		return 0;
 }
 
 int compositor_set_cursor_pos(int x, int y) {

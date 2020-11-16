@@ -27,23 +27,26 @@ SOURCES = src/flutter-pi.c \
 	src/collection.c \
 	src/cursor.c \
 	src/keyboard.c \
-	src/plugins/firebase.c \
+	src/plugins/firebase.cpp \
 	src/plugins/services.c \
 	src/plugins/testplugin.c \
 	src/plugins/text_input.c \
 	src/plugins/raw_keyboard.c \
 	src/plugins/omxplayer_video_player.c
 
+EXTRA_HEADERS = include/jsmn.h
+
 CC = /usr/bin/g++
 OBJECTS = $(patsubst src/%.c,out/obj/%.o,$(SOURCES))
+HEADERS = $(patsubst src/%.c,include/%.h,$(SOURCES)) $(EXTRA_HEADERS)
 
 all: out/flutter-pi
 
-out/obj/%.o: src/%.c 
+out/obj/%.o: src/%.c include/%.h $(EXTRA_HEADERS)
 	@mkdir -p $(@D)
 	$(CC) -c $(REAL_CFLAGS) $< -o $@
 
-out/flutter-pi: $(OBJECTS)
+out/flutter-pi: $(OBJECTS) $(HEADERS)
 	@mkdir -p $(@D)
 	$(CC) $(REAL_CFLAGS) $(REAL_LDFLAGS) $(OBJECTS) -o out/flutter-pi
 

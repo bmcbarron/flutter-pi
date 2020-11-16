@@ -237,4 +237,5 @@ int texreg_unregister_texture(int64_t texture_id) {
     if (engine_result != kSuccess) {
         return EINVAL;
     }
+    return engine_result;
 }

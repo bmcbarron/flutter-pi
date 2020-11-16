@@ -100,7 +100,9 @@ static char *get_value_allocated(const char *varname, const char *buffer) {
 static char *load_file(const char *path) {
     struct stat s;
     int ok, fd;
-    
+    char *buffer = NULL;
+    int result = 0;
+
     ok = open(path, O_RDONLY);
     if (ok < 0) {
         goto fail_return_null;
@@ -113,13 +115,13 @@ static char *load_file(const char *path) {
         goto fail_close;
     }
 
-    char *buffer = malloc(s.st_size + 1);
+    buffer = malloc(s.st_size + 1);
     if (buffer == NULL) {
         errno = ENOMEM;
         goto fail_close;
     }
 
-    int result = read(fd, buffer, s.st_size);
+    result = read(fd, buffer, s.st_size);
     if (result < 0) {
         goto fail_close;
     } else if (result == 0) {

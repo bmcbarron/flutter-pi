@@ -614,11 +614,11 @@ int platch_decode_value_json(char *message, size_t size, jsmntok_t **pptoken, si
 		(*pptoken) += 1;
 		*ptokensremaining -= 1;
 
-		fprintf(stderr, "platch_decode_value_json (size=%d, ptoken=>type=%d)\n", size, ptoken->type);
+		//bpm fprintf(stderr, "*** platch_decode_value_json (size=%d, ptoken=>type=%d)\n", size, ptoken->type);
 		switch (ptoken->type) {
-			case JSMN_UNDEFINED:
+			case JSMN_UNDEFINED: 
 				return EBADMSG;
-			case JSMN_PRIMITIVE:
+			case JSMN_PRIMITIVE: {
 				if (message[ptoken->start] == 'n') {
 					value_out->type = kJsonNull;
 				} else if (message[ptoken->start] == 't') {
@@ -635,9 +635,8 @@ int platch_decode_value_json(char *message, size_t size, jsmntok_t **pptoken, si
 					value_out->number_value = strtod(message + ptoken->start, NULL);
 					message[ptoken->end] = old;
 				}
-
-				break;
-			case JSMN_STRING: ;
+				break; }
+			case JSMN_STRING: {
 				// use zero-copy approach.
 
 				message[ptoken->end] = '\0';
@@ -646,8 +645,8 @@ int platch_decode_value_json(char *message, size_t size, jsmntok_t **pptoken, si
 				value_out->type = kJsonString;
 				value_out->string_value = string;
 
-				break;
-			case JSMN_ARRAY: ;
+				break; }
+			case JSMN_ARRAY: {
 				struct json_value *array = calloc(ptoken->size, sizeof(struct json_value));
 				if (!array) return ENOMEM;
 
@@ -660,8 +659,8 @@ int platch_decode_value_json(char *message, size_t size, jsmntok_t **pptoken, si
 				value_out->size = ptoken->size;
 				value_out->array = array;
 
-				break;
-			case JSMN_OBJECT: ;
+				break; }
+			case JSMN_OBJECT: {
 				struct json_value  key;
 				char                    **keys = calloc(ptoken->size, sizeof(char *));
 				struct json_value *values = calloc(ptoken->size, sizeof(struct json_value));
@@ -683,10 +682,11 @@ int platch_decode_value_json(char *message, size_t size, jsmntok_t **pptoken, si
 				value_out->keys = keys;
 				value_out->values = values;
 
-				break;
+				break; }
 			default:
 				return EBADMSG;
 		}
+		//bpm fprintf(stderr, "<= platch_decode_value_json\n  value_out=(type=%d)\n", value_out->type);
 	}
 
 	return 0;
@@ -707,7 +707,7 @@ int platch_decode(uint8_t *buffer, size_t size, enum platch_codec codec, struct 
 		return 0;
 	}
 	
-	fprintf(stderr, "platch_decode (codec=%d, size=%d)\n", codec, size);
+	//bpm fprintf(stderr, "platch_decode (codec=%d, size=%d)\n", codec, size);
 	object_out->codec = codec;
 	switch (codec) {
 		case kStringCodec: ;
@@ -736,7 +736,7 @@ int platch_decode(uint8_t *buffer, size_t size, enum platch_codec codec, struct 
 			ok = platch_decode_value_json((char *) buffer, size, NULL, NULL, &root_jsvalue);
 			if (ok != 0) return ok;
 
-      fprintf(stderr, "platch_decode:kJSONMethodCall (root_type=%d)\n", root_jsvalue.type);
+      //bpm fprintf(stderr, "platch_decode:kJSONMethodCall (root_type=%d)\n", root_jsvalue.type);
 			if (root_jsvalue.type != kJsonObject) return EBADMSG;
 			
 			for (int i=0; i < root_jsvalue.size; i++) {
@@ -1439,7 +1439,9 @@ bool jsvalue_equals(struct json_value *a, struct json_value *b) {
 
 			return true;
 	}
+	return false;
 }
+
 struct json_value *jsobject_get(struct json_value *object, char *key) {
 	int i;
 	for (i=0; i < object->size; i++)
