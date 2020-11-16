@@ -10,4 +10,10 @@
 extern int firebase_init(void);
 extern int firebase_deinit(void);
 
+const char EVENT_TYPE_CHILD_ADDED[] = "_EventType.childAdded";
+const char EVENT_TYPE_CHILD_REMOVED[] = "_EventType.childRemoved";
+const char EVENT_TYPE_CHILD_CHANGED[] = "_EventType.childChanged";
+const char EVENT_TYPE_CHILD_MOVED[] = "_EventType.childMoved";
+const char EVENT_TYPE_VALUE[] = "_EventType.value";
+
 #endif

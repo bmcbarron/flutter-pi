@@ -1,5 +1,6 @@
 REAL_CFLAGS = -I./include $(shell pkg-config --cflags gbm libdrm glesv2 egl libsystemd libinput libudev xkbcommon) \
   -I../firebase-cpp-sdk/app/src/include \
+  -I../firebase-cpp-sdk/database/src/include \
 	-DBUILD_TEXT_INPUT_PLUGIN \
 	-DBUILD_TEST_PLUGIN \
 	-DBUILD_OMXPLAYER_VIDEO_PLAYER_PLUGIN \
@@ -7,14 +8,24 @@ REAL_CFLAGS = -I./include $(shell pkg-config --cflags gbm libdrm glesv2 egl libs
 	-funwind-tables \
 	-fpermissive \
 	-w \
+  -std=gnu++17 \
 	$(CFLAGS)
 
 REAL_LDFLAGS = \
+  -L../firebase-cpp-sdk/desktop_build/database -lfirebase_database \
+  -L../firebase-cpp-sdk/desktop_build/app -lfirebase_app \
+  -L../firebase-cpp-sdk/desktop_build/external/src/flatbuffers-build -lflatbuffers \
+  -L../firebase-cpp-sdk/desktop_build/external/src/zlib-build -lz \
+  -L../firebase-cpp-sdk/desktop_build -llibuWS \
+	-L../firebase-cpp-sdk/desktop_build/external/src/firestore-build/external/src/leveldb-build -lleveldb \
 	$(shell pkg-config --libs gbm libdrm glesv2 egl libsystemd libinput libudev xkbcommon) \
 	-lrt \
 	-lpthread \
 	-ldl \
 	-lm \
+	-lssl \
+	-lcrypto \
+	-latomic \
 	-rdynamic \
 	$(LDFLAGS)
 
@@ -48,7 +59,7 @@ out/obj/%.o: src/%.c include/%.h $(EXTRA_HEADERS)
 
 out/flutter-pi: $(OBJECTS) $(HEADERS)
 	@mkdir -p $(@D)
-	$(CC) $(REAL_CFLAGS) $(REAL_LDFLAGS) $(OBJECTS) -o out/flutter-pi
+	$(CC) $(REAL_CFLAGS) $(OBJECTS) $(REAL_LDFLAGS) -o out/flutter-pi
 
 clean:
 	@mkdir -p out
