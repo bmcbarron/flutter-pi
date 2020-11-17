@@ -239,9 +239,9 @@ static const GLubyte *hacked_glGetString(GLenum name) {
 		return glGetString(name);
 
 	if (extensions == NULL) {
-		GLubyte *orig_extensions = (GLubyte *) glGetString(GL_EXTENSIONS);
+		auto orig_extensions = glGetString(GL_EXTENSIONS);
 		
-		extensions = malloc(strlen((const char*)orig_extensions) + 1);
+		extensions = static_cast<GLubyte*>(malloc(strlen((const char*)orig_extensions) + 1));
 		if (!extensions) {
 			fprintf(stderr, "Could not allocate memory for modified GL_EXTENSIONS string\n");
 			return NULL;
@@ -355,7 +355,7 @@ static void on_platform_message(
 ) {
 	int ok;
 
-	ok = plugin_registry_on_platform_message((FlutterPlatformMessage *) message);
+	ok = plugin_registry_on_platform_message(const_cast<FlutterPlatformMessage *>(message));
 	if (ok != 0) {
 		fprintf(stderr, "[flutter-pi] Error handling platform message. plugin_registry_on_platform_message: %s\n", strerror(ok));
 	}
@@ -467,7 +467,7 @@ static int on_execute_platform_task(
 	struct platform_task *task;
 	int ok;
 
-	task = userdata;
+	task = static_cast<platform_task*>(userdata);
 	ok = task->callback(task->userdata);
 	if (ok != 0) {
 		fprintf(stderr, "[flutter-pi] Error executing platform task: %s\n", strerror(ok));
@@ -488,7 +488,7 @@ int flutterpi_post_platform_task(
 	struct platform_task *task;
 	int ok;
 
-	task = malloc(sizeof *task);
+	task = static_cast<platform_task*>(malloc(sizeof *task));
 	if (task == NULL) {
 		return ENOMEM;
 	}
@@ -546,7 +546,7 @@ static int on_execute_platform_task_with_time(
 	struct platform_task *task;
 	int ok;
 
-	task = userdata;
+	task = static_cast<platform_task*>(userdata);
 	ok = task->callback(task->userdata);
 	if (ok != 0) {
 		fprintf(stderr, "[flutter-pi] Error executing timed platform task: %s\n", strerror(ok));
@@ -569,7 +569,7 @@ int flutterpi_post_platform_task_with_time(
 	//sd_event_source *source;
 	int ok;
 
-	task = malloc(sizeof *task);
+	task = static_cast<platform_task*>(malloc(sizeof *task));
 	if (task == NULL) {
 		return ENOMEM;
 	}
@@ -681,7 +681,7 @@ static int on_execute_flutter_task(
 	FlutterEngineResult result;
 	FlutterTask *task;
 
-	task = userdata;
+	task = static_cast<FlutterTask*>(userdata);
 
 	result = flutterpi.flutter.libflutter_engine.FlutterEngineRunTask(flutterpi.flutter.engine, task);
 	if (result != kSuccess) {
@@ -704,7 +704,7 @@ static void on_post_flutter_task(
 	FlutterTask *dup_task;
 	int ok;
 
-	dup_task = malloc(sizeof *dup_task);
+	dup_task = static_cast<FlutterTask*>(malloc(sizeof *dup_task));
 	if (dup_task == NULL) {
 		return;
 	}
@@ -730,9 +730,12 @@ static int on_send_platform_message(
 	struct platform_message *msg;
 	FlutterEngineResult result;
 
-	msg = userdata;
+	msg = static_cast<platform_message*>(userdata);
 	fprintf(stderr, "[%d] on_send_platform_message(size=%d)\n", gettid(), msg->message_size);
-
+	for (int i = 0; i < msg->message_size; ++i) {
+		fprintf(stderr, "%02x(%d)", (msg->message)[i], (msg->message)[i]);
+	}
+	fprintf(stderr, "\n");
 	if (msg->is_response) {
 		result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessageResponse(flutterpi.flutter.engine, msg->target_handle, msg->message, msg->message_size);
 	} else {
@@ -791,22 +794,23 @@ int flutterpi_send_platform_message(
 	int ok;
 	
 	if (runs_platform_tasks_on_current_thread(NULL)) {
-		result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessage(
-			flutterpi.flutter.engine,
-			&(const FlutterPlatformMessage) {
+			const FlutterPlatformMessage flutter_message = {
 				.struct_size = sizeof(FlutterPlatformMessage),
 				.channel = channel,
 				.message = message,
 				.message_size = message_size,
 				.response_handle = responsehandle
-			}
+			};
+		result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessage(
+			flutterpi.flutter.engine,
+		  &flutter_message
 		);
 		if (result != kSuccess) {
 			fprintf(stderr, "[flutter-pi] Error sending platform message. FlutterEngineSendPlatformMessage: %s\n", FLUTTER_RESULT_TO_STRING(result));
 			return EIO;
 		}
 	} else {
-		msg = calloc(1, sizeof *msg);
+		msg = static_cast<platform_message*>(calloc(1, sizeof *msg));
 		if (msg == NULL) {
 			return ENOMEM;
 		}
@@ -822,7 +826,7 @@ int flutterpi_send_platform_message(
 		
 		if (message && message_size) {
 			msg->message_size = message_size;
-			msg->message = memdup(message, message_size);
+			msg->message = static_cast<uint8_t*>(memdup(message, message_size));
 			if (msg->message == NULL) {
 				free(msg->target_channel);
 				free(msg);
@@ -871,7 +875,7 @@ int flutterpi_respond_to_platform_message(
 			return EIO;
 		}
 	} else {
-		msg = malloc(sizeof *msg);
+		msg = static_cast<platform_message*>(malloc(sizeof *msg));
 		if (msg == NULL) {
 			return ENOMEM;
 		}
@@ -880,7 +884,7 @@ int flutterpi_respond_to_platform_message(
 		msg->target_handle = handle;
 		if (message && message_size) {
 			msg->message_size = message_size;
-			msg->message = memdup(message, message_size);
+			msg->message = static_cast<uint8_t*>(memdup(message, message_size));
 			if (!msg->message) {
 				free(msg);
 				return ENOMEM;
@@ -1137,7 +1141,7 @@ int flutterpi_fill_view_properties(
 	} else if (flutterpi.view.has_rotation) {
 		for (int i = kPortraitUp; i <= kLandscapeRight; i++) {
 			if (ANGLE_BETWEEN_ORIENTATIONS(default_orientation, i) == flutterpi.view.rotation) {
-				flutterpi.view.orientation = i;
+				flutterpi.view.orientation = static_cast<device_orientation>(i);
 				flutterpi.view.has_orientation = true;
 				break;
 			}
@@ -1159,7 +1163,7 @@ int flutterpi_fill_view_properties(
 	} else if (has_rotation) {
 		for (int i = kPortraitUp; i <= kLandscapeRight; i++) {
 			if (ANGLE_BETWEEN_ORIENTATIONS(default_orientation, i) == rotation) {
-				flutterpi.view.orientation = i;
+				flutterpi.view.orientation = static_cast<device_orientation>(i);
 				flutterpi.view.rotation = rotation;
 				break;
 			}
@@ -1206,6 +1210,35 @@ int flutterpi_fill_view_properties(
 
 	return 0;
 }
+
+template<typename T>
+static void loadEglProc(T* ptr, const char* proc) {
+	*ptr = eglGetProcAddress(proc);
+}
+
+#define LOAD_EGL_PROC(flutterpi_struct, name) \
+    do { \
+		char proc[256]; \
+		snprintf(proc, 256, "%s", "egl" #name); \
+		proc[3] = toupper(proc[3]); \
+        loadEglProc(&(flutterpi_struct).egl.name, proc); \
+        if ((flutterpi_struct).egl.name == NULL) { \
+            fprintf(stderr, "[flutter-pi] FATAL: Could not resolve EGL procedure " #name "\n"); \
+            return EINVAL; \
+        } \
+    } while (false)
+
+#define LOAD_GL_PROC(flutterpi_struct, name) \
+	do { \
+		char proc_name[256]; \
+		snprintf(proc_name, 256, "gl" #name); \
+		proc_name[2] = toupper(proc_name[2]); \
+		loadEglProc(&(flutterpi_struct).gl.name, proc_name); \
+		if ((flutterpi_struct).gl.name == NULL) { \
+			fprintf(stderr, "[flutter-pi] FATAL: Could not resolve GL procedure " #name "\n"); \
+			return EINVAL; \
+		} \
+	} while (false)
 
 static int load_egl_gl_procs(void) {
 	LOAD_EGL_PROC(flutterpi, getPlatformDisplay);
@@ -1549,7 +1582,7 @@ static int init_display(void) {
 		return EIO;
 	}
 
-	configs = malloc(count * sizeof(EGLConfig));
+	configs = static_cast<EGLConfig*>(malloc(count * sizeof(EGLConfig)));
 	if (!configs) return ENOMEM;
 
 	eglChooseConfig(flutterpi.egl.display, config_attribs, configs, count, &matched);
@@ -1667,7 +1700,7 @@ static int init_display(void) {
 	}
 
 	/// We're starting without any rotation by default.
-	flutterpi_fill_view_properties(false, 0, false, 0);
+	flutterpi_fill_view_properties(false, kPortraitUp, false, 0);
 
 	return 0;
 }
@@ -1675,13 +1708,20 @@ static int init_display(void) {
 /**************************
  * FLUTTER INITIALIZATION *
  **************************/
+
+template<typename T>
+static bool loadSymbol(T* ptr, void* handle, const char *name) {
+	*ptr = dlsym(handle, name);
+	return (ptr != nullptr);
+}
+
 static int init_application(void) {
 	FlutterEngineAOTDataSource aot_source;
 	struct libflutter_engine *libflutter_engine;
-	FlutterRendererConfig renderer_config = {0};
+	FlutterRendererConfig renderer_config;
 	FlutterEngineAOTData aot_data;
 	FlutterEngineResult engine_result;
-	FlutterProjectArgs project_args = {0};
+	FlutterProjectArgs project_args;
 	void *libflutter_engine_handle;
 	int ok;
 
@@ -1711,10 +1751,9 @@ static int init_application(void) {
 
 #	define LOAD_LIBFLUTTER_ENGINE_PROC(name) \
 		do { \
-			libflutter_engine->name = dlsym(libflutter_engine_handle, #name); \
-			if (!libflutter_engine->name) {\
-				perror("[flutter-pi] Could not resolve libflutter_engine procedure " #name ". dlsym"); \
-				return EINVAL; \
+		  if (!loadSymbol(&libflutter_engine->name, libflutter_engine_handle, #name)) { \
+      	perror("[flutter-pi] Could not resolve libflutter_engine procedure " #name ". dlsym"); \
+				return NULL; \
 			} \
 		} while (false)
 
@@ -1942,7 +1981,7 @@ static int on_libinput_ready(sd_event_source *s, int fd, uint32_t revents, void 
 		if (type == LIBINPUT_EVENT_DEVICE_ADDED) {
 			device = libinput_event_get_device(event);
 			
-			data = calloc(1, sizeof(*data));
+			data = static_cast<input_device_data*>(calloc(1, sizeof(*data)));
 			data->flutter_device_id_offset = flutterpi.input.next_unused_flutter_device_id;
 
 			libinput_device_set_user_data(device, data);
@@ -1986,7 +2025,7 @@ static int on_libinput_ready(sd_event_source *s, int fd, uint32_t revents, void 
 			}
 		} else if (LIBINPUT_EVENT_IS_TOUCH(type)) {
 			touch_event = libinput_event_get_touch_event(event);
-			data = libinput_device_get_user_data(libinput_event_get_device(event));
+			data = static_cast<input_device_data*>(libinput_device_get_user_data(libinput_event_get_device(event)));
 
 			if ((type == LIBINPUT_EVENT_TOUCH_DOWN) || (type == LIBINPUT_EVENT_TOUCH_MOTION) || (type == LIBINPUT_EVENT_TOUCH_UP)) {
 				int slot = libinput_event_touch_get_slot(touch_event);
@@ -2042,7 +2081,7 @@ static int on_libinput_ready(sd_event_source *s, int fd, uint32_t revents, void 
 			}
 		} else if (LIBINPUT_EVENT_IS_POINTER(type)) {
 			pointer_event = libinput_event_get_pointer_event(event);
-			data = libinput_device_get_user_data(libinput_event_get_device(event));
+			data = static_cast<input_device_data*>(libinput_device_get_user_data(libinput_event_get_device(event)));
 
 			if (type == LIBINPUT_EVENT_POINTER_MOTION) {
 				double dx = libinput_event_pointer_get_dx(pointer_event);
@@ -2181,7 +2220,7 @@ static int on_libinput_ready(sd_event_source *s, int fd, uint32_t revents, void 
 			uint16_t evdev_keycode;
 			
 			keyboard_event = libinput_event_get_keyboard_event(event);
-			data = libinput_device_get_user_data(libinput_event_get_device(event));
+			data = static_cast<input_device_data*>(libinput_device_get_user_data(libinput_event_get_device(event)));
 			evdev_keycode = libinput_event_keyboard_get_key(keyboard_event);
 			key_state = libinput_event_keyboard_get_key_state(keyboard_event);
 
@@ -2215,30 +2254,32 @@ static int on_libinput_ready(sd_event_source *s, int fd, uint32_t revents, void 
 			if (codepoint) {
 				if (codepoint < 0x80) {
 					if (isprint(codepoint)) {
-						 uint8_t c[1] = {codepoint};
+						uint8_t c[1] = {
+						  static_cast<uint8_t>(codepoint),
+						};
 						textin_on_utf8_char(c);
 					}
 				} else if (codepoint < 0x800) {
-					 uint8_t c[2] = {
-						0xc0 | (codepoint >> 6),
-						0x80 | (codepoint & 0x3f)
+					uint8_t c[2] = {
+						static_cast<uint8_t>(0xc0 | (codepoint >> 6)),
+						static_cast<uint8_t>(0x80 | (codepoint & 0x3f))
 					};
 					textin_on_utf8_char(c);
 				} else if (codepoint < 0x10000) {
 					if (!(codepoint >= 0xD800 && codepoint < 0xE000) && !(codepoint == 0xFFFF)) {
-						 uint8_t c[3] = {
-							0xe0 | (codepoint >> 12),
-							0x80 | ((codepoint >> 6) & 0x3f),
-							0x80 | (codepoint & 0x3f)
+						uint8_t c[3] = {
+							static_cast<uint8_t>(0xe0 | (codepoint >> 12)),
+						  static_cast<uint8_t>(0x80 | ((codepoint >> 6) & 0x3f)),
+						  static_cast<uint8_t>(0x80 | (codepoint & 0x3f))
 						};
 						textin_on_utf8_char(c);
 					}
 				} else if (codepoint < 0x110000) {
-					 uint8_t c[4] = {
-						0xf0 | (codepoint >> 18),
-						0x80 | ((codepoint >> 12) & 0x3f),
-						0x80 | ((codepoint >> 6) & 0x3f),
-						0x80 | (codepoint & 0x3f)
+					uint8_t c[4] = {
+						static_cast<uint8_t>(0xf0 | (codepoint >> 18)),
+						static_cast<uint8_t>(0x80 | ((codepoint >> 12) & 0x3f)),
+						static_cast<uint8_t>(0x80 | ((codepoint >> 6) & 0x3f)),
+						static_cast<uint8_t>(0x80 | (codepoint & 0x3f))
 					};
 					textin_on_utf8_char(c);
 				}
@@ -2286,9 +2327,8 @@ static struct libinput *try_create_udev_backed_libinput(void) {
 
 #	define LOAD_LIBUDEV_PROC(name) \
 		do { \
-			libudev->name = dlsym(handle, #name); \
-			if (!libudev->name) {\
-				perror("[flutter-pi] Could not resolve libudev procedure " #name ". dlsym"); \
+		  if (!loadSymbol(&libudev->name, handle, #name)) { \
+        perror("[flutter-pi] Could not resolve libudev procedure " #name ". dlsym"); \
 				return NULL; \
 			} \
 		} while (false)
@@ -2477,7 +2517,7 @@ static int init_user_input(void) {
 			fprintf(stderr, "[flutter-pi] Could not add libinput callback to main loop. sd_event_add_io: %s\n", strerror(-ok));
 #			ifndef BUILD_WITHOUT_UDEV_SUPPORT
 				if (libinput_get_user_data(libinput) != NULL) {
-					struct udev *udev = libinput_get_user_data(libinput);
+					struct udev *udev = static_cast<struct udev*>(libinput_get_user_data(libinput));
 					libinput_unref(libinput);
 					flutterpi.input.libudev.udev_unref(udev);
 				} else {
@@ -2672,7 +2712,7 @@ static bool parse_cmd_args(int argc, char **argv) {
 
 	flutterpi.input.use_paths = input_specified;
 	flutterpi.flutter.asset_bundle_path = strdup(argv[optind]);
-	flutterpi.flutter.runtime_mode = runtime_mode_int;
+	flutterpi.flutter.runtime_mode = static_cast<flutter_runtime_mode>(runtime_mode_int);
 	flutterpi.input.disable_text_input = disable_text_input_int;
 	flutterpi.input.input_devices_glob = input_devices_glob;
 
@@ -2734,21 +2774,65 @@ void deinit() {
 }
 
 void handler(int sig) {
-  void *array[10];
-  size_t size;
+	    void *trace[16];
+		size_t trace_size = backtrace(trace, 16);
 
-  // get void*'s for all entries on the stack
-  size = backtrace(array, 10);
+		// print out all the frames to stderr
+		fprintf(stderr, "Error: sig %d:\n", sig);
 
-  // print out all the frames to stderr
-  fprintf(stderr, "Error: signal %d:\n", sig);
-  backtrace_symbols_fd(array, size, STDERR_FILENO);
-  exit(1);
+		/* overwrite sigaction with caller's address */
+		//trace[1] = (void *)ctx.eip;
+		auto messages = backtrace_symbols(trace, trace_size);
+		/* skip first stack frame (points here) */
+		printf("[bt] Execution path:\n");
+		for (int i = 1; i < trace_size; ++i) {
+			printf("[bt] #%d %s\n", i, messages[i]);
+
+			/* find first occurence of '(' or ' ' in message[i] and assume
+			* everything before that is the file name. (Don't go beyond 0 though
+			* (string terminator)*/
+			size_t p = 0;
+			while(messages[i][p] != '(' && messages[i][p] != ' '
+							&& messages[i][p] != 0)
+					++p;
+
+			char syscom[256];
+			sprintf(syscom,"addr2line %p -e %.*s", trace[i], p, messages[i]);
+			//last parameter is the file name of the symbol
+			system(syscom);
+		}
+
+		// backtrace_symbols_fd(array, size, STDERR_FILENO);
+		exit(1);
+
+  // void *array[10];
+  // size_t size;
+
+  // // get void*'s for all entries on the stack
+  // size = backtrace(array, 10);
+
+  // // print out all the frames to stderr
+  // fprintf(stderr, "Error: signal %d:\n", sig);
+  // backtrace_symbols_fd(array, size, STDERR_FILENO);
+  // exit(1);
 }
 
 int main(int argc, char **argv) {
 	fprintf(stderr, "main");
+  signal(SIGABRT, handler);
+  signal(SIGUSR1, handler);
+  signal(SIGTERM, handler);
+  signal(SIGFPE, handler);
   signal(SIGSEGV, handler);
+  signal(SIGILL, handler);
+  signal(SIGBUS, handler);
+	// struct sigaction sa;
+
+  // sa.sa_handler = (__sighandler_t)handler;
+  // sigemptyset(&sa.sa_mask);
+  // sa.sa_flags = SA_RESTART;
+
+  // sigaction(SIGSEGV, &sa, NULL);
 
 	int ok;
 

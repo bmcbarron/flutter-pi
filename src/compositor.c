@@ -245,24 +245,18 @@ static int create_drm_rbo(
 	glBindRenderbuffer(GL_RENDERBUFFER, 0);
 	
 	// glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	uint32_t bo_handles[4] = {fbo.gem_handle, 0, 0, 0};
+	uint32_t pitches[4] = {fbo.gem_stride, 0, 0, 0};
+	uint32_t offsets[4] = {0, 0, 0, 0};
 
 	ok = drmModeAddFB2(
 		flutterpi.drm.drmdev->fd,
 		width,
 		height,
 		DRM_FORMAT_ARGB8888,
-		(const uint32_t*) &(uint32_t[4]) {
-			fbo.gem_handle,
-			0,
-			0,
-			0
-		},
-		(const uint32_t*) &(uint32_t[4]) {
-			fbo.gem_stride, 0, 0, 0
-		},
-		(const uint32_t*) &(uint32_t[4]) {
-			0, 0, 0, 0
-		},
+		bo_handles,
+		pitches,
+		offsets,
 		&fbo.drm_fb_id,
 		0
 	);

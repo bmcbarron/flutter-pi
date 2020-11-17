@@ -9,6 +9,11 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <sys/syscall.h>
+#include <stdio.h>
+#include <execinfo.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 #include "flutter_embedder.h"
 #include "platformchannel.h"
@@ -49,13 +54,50 @@ static inline int _advance_size_bytes(uintptr_t *value, size_t size, size_t *rem
 }
 
 
+void asserty(int value) {
+	return;
+	if (value != 0) {
+  	// get void*'s for all entries on the stack
+    void *trace[16];
+		size_t trace_size = backtrace(trace, 16);
+
+		// print out all the frames to stderr
+		fprintf(stderr, "Error: value %d:\n", value);
+
+		/* overwrite sigaction with caller's address */
+		//trace[1] = (void *)ctx.eip;
+		auto messages = backtrace_symbols(trace, trace_size);
+		/* skip first stack frame (points here) */
+		printf("[bt] Execution path:\n");
+		for (int i = 1; i < trace_size; ++i) {
+			printf("[bt] #%d %s\n", i, messages[i]);
+
+			/* find first occurence of '(' or ' ' in message[i] and assume
+			* everything before that is the file name. (Don't go beyond 0 though
+			* (string terminator)*/
+			size_t p = 0;
+			while(messages[i][p] != '(' && messages[i][p] != ' '
+							&& messages[i][p] != 0)
+					++p;
+
+			char syscom[256];
+			sprintf(syscom,"addr2line %p -e %.*s", trace[i], p, messages[i]);
+			//last parameter is the file name of the symbol
+			system(syscom);
+		}
+
+		// backtrace_symbols_fd(array, size, STDERR_FILENO);
+		exit(1);
+	}
+}
+
 static inline int _write8(uint8_t **pbuffer, uint8_t value, size_t *remaining) {
     if ((remaining != NULL) && (*remaining < 1)) {
         return EBADMSG;
     }
 
-	//*(uint8_t*) *pbuffer = value;
-    intmem::storeu(*pbuffer, value);	
+	  *(uint8_t*) *pbuffer = value;
+    //intmem::storeu(*pbuffer, value);	
     
     return _advance((uintptr_t*) pbuffer, 1, remaining);
 }
@@ -64,9 +106,9 @@ static inline int _write16(uint8_t **pbuffer, uint16_t value, size_t *remaining)
         return EBADMSG;
     }
 
-    // assert((int)*pbuffer % (alignof(uint16_t)) == 0);
-	// *(uint16_t*) *pbuffer = value;
-    intmem::storeu(*pbuffer, value);
+    asserty((int)*pbuffer % (alignof(uint16_t)) == 0);
+	  *(uint16_t*) *pbuffer = value;
+    //intmem::storeu(*pbuffer, value);
     
     return _advance((uintptr_t*) pbuffer, 2, remaining);
 }
@@ -75,9 +117,9 @@ static inline int _write32(uint8_t **pbuffer, uint32_t value, size_t *remaining)
         return EBADMSG;
     }
 
-    // assert((int)*pbuffer % (alignof(uint32_t)) == 0);
-	// *(uint32_t*) *pbuffer = value;
-    intmem::storeu(*pbuffer, value);
+    asserty((int)*pbuffer % (alignof(uint32_t)) == 0);
+	  *(uint32_t*) *pbuffer = value;
+    //intmem::storeu(*pbuffer, value);
     
     return _advance((uintptr_t*) pbuffer, 4, remaining);
 }
@@ -86,9 +128,9 @@ static inline int _write64(uint8_t **pbuffer, uint64_t value, size_t *remaining)
         return EBADMSG;
     }
 
-    // assert((int)*pbuffer % (alignof(uint64_t)) == 0);    
-    // *(uint64_t*) *pbuffer = value;
-    intmem::storeu(*pbuffer, value);
+    asserty((int)*pbuffer % (alignof(uint64_t)) == 0);    
+    *(uint64_t*) *pbuffer = value;
+    //intmem::storeu(*pbuffer, value);
     
     return _advance((uintptr_t*) pbuffer, 8, remaining);
 }
@@ -98,8 +140,8 @@ static inline int _read8(uint8_t **pbuffer, uint8_t* value_out, size_t *remainin
         return EBADMSG;
     }
 
-    // *value_out = *(uint8_t *) *pbuffer;
-    *value_out = intmem::loadu<uint8_t>(*pbuffer);	
+    *value_out = *(uint8_t *) *pbuffer;
+    //*value_out = intmem::loadu<uint8_t>(*pbuffer);	
 
     return _advance((uintptr_t*) pbuffer, 1, remaining);
 }
@@ -108,9 +150,9 @@ static inline int _read16(uint8_t **pbuffer, uint16_t *value_out, size_t *remain
         return EBADMSG;
     }
 
-    // assert((int)*pbuffer % (alignof(uint16_t)) == 0);
-    // *value_out = *(uint16_t *) *pbuffer;
-    *value_out = intmem::loadu<uint16_t>(*pbuffer);
+    asserty((int)*pbuffer % (alignof(uint16_t)) == 0);
+    *value_out = *(uint16_t *) *pbuffer;
+    //*value_out = intmem::loadu<uint16_t>(*pbuffer);
 	
     return _advance((uintptr_t*) pbuffer, 2, remaining);
 }
@@ -119,9 +161,9 @@ static inline int _read32(uint8_t **pbuffer, uint32_t *value_out, size_t *remain
         return EBADMSG;
     }
 
-    // assert((int)*pbuffer % (alignof(uint32_t)) == 0);    
-    // *value_out = *(uint32_t *) *pbuffer;
-    *value_out = intmem::loadu<uint32_t>(*pbuffer);
+    asserty((int)*pbuffer % (alignof(uint32_t)) == 0);    
+    *value_out = *(uint32_t *) *pbuffer;
+    // *value_out = intmem::loadu<uint32_t>(*pbuffer);
 
     return _advance((uintptr_t*) pbuffer, 4, remaining);
 }
@@ -130,9 +172,9 @@ static inline int _read64(uint8_t **pbuffer, uint64_t *value_out, size_t *remain
         return EBADMSG;
     }
     
-    // assert((int)*pbuffer % (alignof(uint64_t)) == 0);
-    // *value_out = *(uint64_t *) *pbuffer;
-    *value_out = intmem::loadu<uint64_t>(*pbuffer);
+    asserty((int)*pbuffer % (alignof(uint64_t)) == 0);
+    *value_out = *(uint64_t *) *pbuffer;
+    // *value_out = intmem::loadu<uint64_t>(*pbuffer);
 
     return _advance((uintptr_t*) pbuffer, 8, remaining);
 }
@@ -377,7 +419,7 @@ int platch_write_value_to_buffer_std(struct std_value* value, uint8_t **pbuffer)
 	size_t size;
 	int ok;
 
-	//fprintf(stderr, "platch_write_value_to_buffer_std (type=%d)\n", value->type);
+	fprintf(stderr, "platch_write_value_to_buffer_std (type=%d)\n", value->type);
 	_write8(pbuffer, value->type, NULL);
 	//fprintf(stderr, "after value write (type=%d)\n", value->type);
 

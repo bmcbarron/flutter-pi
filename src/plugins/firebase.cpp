@@ -13,100 +13,10 @@
 #include "flutter-pi.h"
 #include "compositor.h"
 #include "pluginregistry.h"
+#include "std_codec.h"
 
 #undef True
 #undef False
-
-#define INDENT_STRING "                    "
-
-int __stdPrint(struct std_value *value, int indent) {
-  switch (value->type) {
-    case kStdNull:
-      fprintf(stderr, "null");
-      break;
-    case kStdTrue:
-      fprintf(stderr, "true");
-      break;
-    case kStdFalse:
-      fprintf(stderr, "false");
-      break;
-    case kStdInt32:
-      fprintf(stderr, "%" PRIi32, value->int32_value);
-      break;
-    case kStdInt64:
-      fprintf(stderr, "%" PRIi64, value->int64_value);
-      break;
-    case kStdFloat64:
-      fprintf(stderr, "%lf", value->float64_value);
-      break;
-    case kStdString:
-    case kStdLargeInt:
-      fprintf(stderr, "\"%s\"", value->string_value);
-      break;
-    case kStdUInt8Array:
-      fprintf(stderr, "(uint8_t) [");
-      for (int i = 0; i < value->size; i++) {
-        fprintf(stderr, "0x%02X", value->uint8array[i]);
-        if (i + 1 != value->size) fprintf(stderr, ", ");
-      }
-      fprintf(stderr, "]");
-      break;
-    case kStdInt32Array:
-      fprintf(stderr, "(int32_t) [");
-      for (int i = 0; i < value->size; i++) {
-        fprintf(stderr, "%" PRIi32, value->int32array[i]);
-        if (i + 1 != value->size) fprintf(stderr, ", ");
-      }
-      fprintf(stderr, "]");
-      break;
-    case kStdInt64Array:
-      fprintf(stderr, "(int64_t) [");
-      for (int i = 0; i < value->size; i++) {
-        fprintf(stderr, "%" PRIi64, value->int64array[i]);
-        if (i + 1 != value->size) fprintf(stderr, ", ");
-      }
-      fprintf(stderr, "]");
-      break;
-    case kStdFloat64Array:
-      fprintf(stderr, "(double) [");
-      for (int i = 0; i < value->size; i++) {
-        fprintf(stderr, "%f", value->float64array[i]);
-        if (i + 1 != value->size) fprintf(stderr, ", ");
-      }
-      fprintf(stderr, "]");
-      break;
-    case kStdList:
-      fprintf(stderr, "[\n");
-      for (int i = 0; i < value->size; i++) {
-        fprintf(stderr, "%.*s", indent + 2, INDENT_STRING);
-        __stdPrint(&(value->list[i]), indent + 2);
-        if (i + 1 != value->size) fprintf(stderr, ",\n");
-      }
-      fprintf(stderr, "\n%.*s]", indent, INDENT_STRING);
-      break;
-    case kStdMap:
-      fprintf(stderr, "{\n");
-      for (int i = 0; i < value->size; i++) {
-        fprintf(stderr, "%.*s", indent + 2, INDENT_STRING);
-        __stdPrint(&(value->keys[i]), indent + 2);
-        fprintf(stderr, ": ");
-        __stdPrint(&(value->values[i]), indent + 2);
-        if (i + 1 != value->size) fprintf(stderr, ",\n");
-      }
-      fprintf(stderr, "\n%.*s}", indent, INDENT_STRING);
-      break;
-    default:
-      break;
-  }
-  return 0;
-}
-
-int stdPrint(struct std_value *value, int indent) {
-  fprintf(stderr, "%.*s", indent, INDENT_STRING);
-  __stdPrint(value, indent);
-  fprintf(stderr, "\n");
-  return 0;
-}
 
 // ***********************************************************
 
@@ -450,13 +360,6 @@ static int on_receive_core(
       //appMap->add(val("isAutomaticDataCollectionEnabled"), val(app->IsDataCollectionDefaultEnabled()));
       //appMap->add(val("pluginConstants"), val());
       auto options = std::unique_ptr<ValueMap>(new ValueMap());
-
-      // options->add(val("apiKey"),
-      // val("AIzaSyD7wXmhIQGeSjvF_09HX6-SH4aMVtsks1I"));
-      // options->add(val("appId"),
-      //               val("1:1052108509598:android:8f97ded05f4ad9539e868f"));
-      // options->add(val("messagingSenderId"), val("1052108509598"));
-      // options->add(val("projectId"), val("sopicade"));
       options->add(val("apiKey"), val(app->options().api_key()));
       options->add(val("appId"), val(app->options().app_id()));
       options->add(val("messagingSenderId"), val(app->options().messaging_sender_id()));

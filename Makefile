@@ -10,6 +10,7 @@ REAL_CFLAGS = -I./include $(shell pkg-config --cflags gbm libdrm glesv2 egl libs
 	-w \
   -std=gnu++17 \
 	-Wno-psabi \
+	-Wif-not-aligned \
 	$(CFLAGS)
 
 REAL_LDFLAGS = \
@@ -30,7 +31,7 @@ REAL_LDFLAGS = \
 	-rdynamic \
 	$(LDFLAGS)
 
-SOURCES = src/flutter-pi.c \
+SOURCES = src/flutter-pi.cpp \
 	src/platformchannel.cpp \
 	src/pluginregistry.c \
 	src/texture_registry.c \
@@ -39,6 +40,7 @@ SOURCES = src/flutter-pi.c \
 	src/collection.c \
 	src/cursor.c \
 	src/keyboard.c \
+	src/std_codec.cpp \
 	src/plugins/firebase.cpp \
 	src/plugins/services.c \
 	src/plugins/testplugin.c \
@@ -46,7 +48,7 @@ SOURCES = src/flutter-pi.c \
 	src/plugins/raw_keyboard.c \
 	src/plugins/omxplayer_video_player.c
 
-EXTRA_HEADERS = include/jsmn.h include/intmem.h
+EXTRA_HEADERS = include/jsmn.h include/intmem.h Makefile
 
 CC = /usr/bin/g++
 OBJECTS = $(patsubst src/%.c,out/obj/%.o,$(SOURCES))
