@@ -1,17 +1,24 @@
-REAL_CFLAGS = -I./include $(shell pkg-config --cflags gbm libdrm glesv2 egl libsystemd libinput libudev xkbcommon) \
+COMMON_CFLAGS = \
+  -I./include $(shell pkg-config --cflags gbm libdrm glesv2 egl libsystemd libinput libudev xkbcommon) \
   -I../firebase-cpp-sdk/app/src/include \
   -I../firebase-cpp-sdk/database/src/include \
 	-DBUILD_TEXT_INPUT_PLUGIN \
 	-DBUILD_TEST_PLUGIN \
 	-DBUILD_OMXPLAYER_VIDEO_PLAYER_PLUGIN \
-	-O0 -ggdb \
-	-funwind-tables \
-	-fpermissive \
+	-O0 \
+	-g \
 	-w \
-  -std=gnu++17 \
 	-Wno-psabi \
 	-Wif-not-aligned \
-	$(CFLAGS)
+	-fsanitize=address \
+	-fno-omit-frame-pointer \
+	-fno-optimize-sibling-calls
+
+#	-funwind-tables \
+
+REAL_CFLAGS = $(CFLAGS) $(COMMON_CFLAGS)
+
+REAL_CXXFLAGS = $(CXXFLAGS) $(COMMON_CFLAGS) -std=gnu++17
 
 REAL_LDFLAGS = \
   -L../firebase-cpp-sdk/desktop_build/database -lfirebase_database \
@@ -29,6 +36,7 @@ REAL_LDFLAGS = \
 	-lcrypto \
 	-latomic \
 	-rdynamic \
+	-fsanitize=address \
 	$(LDFLAGS)
 
 SOURCES = src/flutter-pi.c \
@@ -50,7 +58,9 @@ CXX_SOURCES =	src/plugins/firebase.cpp
 
 EXTRA_DEPS = include/jsmn.h Makefile
 
-#CC = /usr/bin/g++
+CC = /usr/bin/clang-9
+CXX = /usr/bin/clang++-9
+
 OBJECTS = $(SOURCES:src/%.c=out/obj/%.o) $(CXX_SOURCES:src/%.cpp=out/obj/%.o)
 HEADERS = $(SOURCES:src/%.c=include/%.h) $(CXX_SOURCES:src/%.cpp=include/%.h)
 
@@ -62,7 +72,7 @@ out/obj/%.o: src/%.c include/%.h $(EXTRA_DEPS)
 
 out/obj/%.o: src/%.cpp include/%.h $(EXTRA_DEPS)
 	@mkdir -p $(@D)
-	$(CXX) -c $(REAL_CFLAGS) $< -o $@
+	$(CXX) -c $(REAL_CXXFLAGS) $< -o $@
 
 out/flutter-pi: $(OBJECTS) $(HEADERS)
 	@mkdir -p $(@D)

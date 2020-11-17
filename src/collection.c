@@ -217,6 +217,7 @@ int cqueue_try_dequeue_locked(
     if (ok == 0) {
         pthread_cond_signal(&queue->is_enqueueable);
     }
+		return ok;
 }
 
 int cqueue_dequeue_locked(

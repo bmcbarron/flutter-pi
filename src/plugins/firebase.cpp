@@ -392,19 +392,21 @@ firebase::database::Query get_query(firebase::database::Database* database, std_
 // ***********************************************************
 
 int success(FlutterPlatformMessageResponseHandle* handle,
-            std::unique_ptr<Value> value = std::unique_ptr<Value>()) {
-  if (!value) {
-    value = val();
+            std::unique_ptr<Value> result = std::unique_ptr<Value>()) {
+  if (!result) {
+    result = val();
   }
-  auto result = &value->build();
+  auto builtResult = result->build();
   fprintf(stderr, "<=\n  result: ");
-  stdPrint(result, 4);
+  stdPrint(&builtResult, 4);
   fprintf(stderr, "--------------------------------------------------------------------------\n");
-  return platch_respond_success_std(handle, result);
+  return platch_respond_success_std(handle, &builtResult);
 }
 
-int error(FlutterPlatformMessageResponseHandle* handle, const char* msg, ...) {
-   ValueString error_details("error details");
+int error(FlutterPlatformMessageResponseHandle* handle, const char* msg, ...)
+  // Not working: __attribute__((format(printf, 2, 3)))
+  {
+  ValueString errorDetails("error details");
   char buffer[256];
   va_list args;
   va_start(args, msg);
@@ -413,7 +415,8 @@ int error(FlutterPlatformMessageResponseHandle* handle, const char* msg, ...) {
   va_end(args);
   fprintf(stderr, "<=\n  error: %s\n", buffer);
   fprintf(stderr, "--------------------------------------------------------------------------\n");
-  return platch_respond_error_std(handle, "bpm", buffer, &error_details.build());
+  auto builtErrorDetails = errorDetails.build();
+  return platch_respond_error_std(handle, "bpm", buffer, &builtErrorDetails);
 }
 
 int not_implemented(FlutterPlatformMessageResponseHandle* handle) {
@@ -455,9 +458,15 @@ int on_invoke_response(struct platch_obj *object, void *userdata) {
 
 void invoke(std::string channel, std::string method, std::unique_ptr<Value> arguments) {
   fprintf(stderr, "invoke(%s, %s)\n  value: ", channel.c_str(), method.c_str());
-  stdPrint(&arguments->build(), 4);
+  auto builtArgs = arguments->build();
+  stdPrint(&builtArgs, 4);
   platch_call_std(const_cast<char*>(channel.c_str()), const_cast<char*>(method.c_str()),
-                  &arguments->build(), on_invoke_response, nullptr);
+                  &builtArgs,
+                  // TODO: This causes memory corruption in FlutterEngineSendPlatformMessage when
+                  // it accesses FlutterPlatformMessageCreateResponseHandle.
+                  // on_invoke_response,
+                  nullptr,
+                  nullptr);
 }
 
 // ***********************************************************
@@ -625,7 +634,7 @@ static int on_receive_database(
     app = firebase::App::GetInstance();
   }
   if (app == nullptr) {
-    return error(handle, "App (%s) not initialized.", appName.value_or("<default>"));
+    return error(handle, "App (%s) not initialized.", appName.value_or("<default>").c_str());
   }
 
   firebase::database::Database *database = nullptr;
