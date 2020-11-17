@@ -489,14 +489,14 @@ int flutterpi_sd_event_add_io(
 
 int flutterpi_send_platform_message(
 	const char *channel,
-	const uint8_t *restrict message,
+	const uint8_t *__restrict__ message,
 	size_t message_size,
 	FlutterPlatformMessageResponseHandle *responsehandle
 );
 
 int flutterpi_respond_to_platform_message(
 	FlutterPlatformMessageResponseHandle *handle,
-	const uint8_t *restrict message,
+	const uint8_t *__restrict__ message,
 	size_t message_size
 );
 

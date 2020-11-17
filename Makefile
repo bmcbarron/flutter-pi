@@ -1,16 +1,33 @@
 REAL_CFLAGS = -I./include $(shell pkg-config --cflags gbm libdrm glesv2 egl libsystemd libinput libudev xkbcommon) \
+  -I../firebase-cpp-sdk/app/src/include \
+  -I../firebase-cpp-sdk/database/src/include \
 	-DBUILD_TEXT_INPUT_PLUGIN \
 	-DBUILD_TEST_PLUGIN \
 	-DBUILD_OMXPLAYER_VIDEO_PLAYER_PLUGIN \
 	-O0 -ggdb \
+	-funwind-tables \
+	-fpermissive \
+	-w \
+  -std=gnu++17 \
+	-Wno-psabi \
+	-Wif-not-aligned \
 	$(CFLAGS)
 
 REAL_LDFLAGS = \
+  -L../firebase-cpp-sdk/desktop_build/database -lfirebase_database \
+  -L../firebase-cpp-sdk/desktop_build/app -lfirebase_app \
+  -L../firebase-cpp-sdk/desktop_build/external/src/flatbuffers-build -lflatbuffers \
+  -L../firebase-cpp-sdk/desktop_build/external/src/zlib-build -lz \
+  -L../firebase-cpp-sdk/desktop_build -llibuWS \
+	-L../firebase-cpp-sdk/desktop_build/external/src/firestore-build/external/src/leveldb-build -lleveldb \
 	$(shell pkg-config --libs gbm libdrm glesv2 egl libsystemd libinput libudev xkbcommon) \
 	-lrt \
 	-lpthread \
 	-ldl \
 	-lm \
+	-lssl \
+	-lcrypto \
+	-latomic \
 	-rdynamic \
 	$(LDFLAGS)
 
@@ -29,17 +46,27 @@ SOURCES = src/flutter-pi.c \
 	src/plugins/raw_keyboard.c \
 	src/plugins/omxplayer_video_player.c
 
-OBJECTS = $(patsubst src/%.c,out/obj/%.o,$(SOURCES))
+CXX_SOURCES =	src/plugins/firebase.cpp
+
+EXTRA_DEPS = include/jsmn.h Makefile
+
+#CC = /usr/bin/g++
+OBJECTS = $(SOURCES:src/%.c=out/obj/%.o) $(CXX_SOURCES:src/%.cpp=out/obj/%.o)
+HEADERS = $(SOURCES:src/%.c=include/%.h) $(CXX_SOURCES:src/%.cpp=include/%.h)
 
 all: out/flutter-pi
 
-out/obj/%.o: src/%.c 
+out/obj/%.o: src/%.c include/%.h $(EXTRA_DEPS)
 	@mkdir -p $(@D)
 	$(CC) -c $(REAL_CFLAGS) $< -o $@
 
-out/flutter-pi: $(OBJECTS)
+out/obj/%.o: src/%.cpp include/%.h $(EXTRA_DEPS)
 	@mkdir -p $(@D)
-	$(CC) $(REAL_CFLAGS) $(REAL_LDFLAGS) $(OBJECTS) -o out/flutter-pi
+	$(CXX) -c $(REAL_CFLAGS) $< -o $@
+
+out/flutter-pi: $(OBJECTS) $(HEADERS)
+	@mkdir -p $(@D)
+	$(CXX) $(OBJECTS) $(REAL_LDFLAGS) -o out/flutter-pi
 
 clean:
 	@mkdir -p out

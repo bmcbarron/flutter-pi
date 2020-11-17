@@ -30,7 +30,7 @@
 #ifdef BUILD_OMXPLAYER_VIDEO_PLAYER_PLUGIN
 #	include <plugins/omxplayer_video_player.h>
 #endif
-
+#include <plugins/firebase.h>
 
 struct platch_obj_cb_data {
 	char *channel;
@@ -63,6 +63,8 @@ struct flutterpi_plugin hardcoded_plugins[] = {
 #ifdef BUILD_OMXPLAYER_VIDEO_PLAYER_PLUGIN
 	{.name = "omxplayer_video_player", .init = omxpvidpp_init, .deinit = omxpvidpp_deinit},
 #endif
+
+	{.name = "firebase", .init = firebase_init, .deinit = firebase_deinit},
 };
 
 static struct platch_obj_cb_data *plugin_registry_get_cb_data_by_channel_locked(const char *channel) {
