@@ -26,7 +26,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <linux/input.h>
-#include <execinfo.h>
 
 #include <xf86drm.h>
 #include <xf86drmMode.h>
