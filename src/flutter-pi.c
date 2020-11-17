@@ -26,6 +26,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <linux/input.h>
+#include <execinfo.h>
 
 #include <xf86drm.h>
 #include <xf86drmMode.h>
@@ -2696,9 +2697,39 @@ void deinit() {
 	return;
 }
 
+void handler(int sig) {
+	void* trace[16];
+	size_t trace_size = backtrace(trace, 16);
+	char** messages = backtrace_symbols(trace, trace_size);
+
+	// Print the stack, skipping the first stack frame (which is this handler).
+	fprintf(stderr, "\nReceived signal %d:\n"
+                  "[bt] Execution path:\n", sig);
+	for (int i = 1; i < trace_size; ++i) {
+		fprintf(stderr, "[bt] #%d %s\n", i, messages[i]);
+
+		// Find the first occurence of '(' or ' ' in message[i] and assume
+		// everything before that is the file name.
+		// Don't go beyond the string terminator.
+		size_t p = 0;
+		while(messages[i][p] != '(' && messages[i][p] != ' ' && messages[i][p] != 0)
+		  ++p;
+
+		// Last parameter is the file name of the symbol.
+		char syscom[256];
+		snprintf(syscom, 256, "addr2line %p -e %.*s", trace[i], p, messages[i]);
+		syscom[255] = '\0';
+		system(syscom);
+	}
+
+	exit(1);
+}
 
 int main(int argc, char **argv) {
 	int ok;
+
+  signal(SIGBUS, handler);
+  signal(SIGSEGV, handler);
 
 	ok = init(argc, argv);
 	if (ok != 0) {
