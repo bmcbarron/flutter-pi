@@ -114,12 +114,6 @@ int stdPrint(struct std_value *value, int indent) {
 
 // ***********************************************************
 
-static struct {
-  char label[256];
-  uint32_t primary_color;  // ARGB8888 (blue is the lowest byte)
-  char isolate_id[32];
-} services = {0};
-
 class Value {
  public:
   virtual ~Value() {}
@@ -395,13 +389,15 @@ firebase::database::Query get_query(firebase::database::Database* database, std_
   return query;
 }
 
+// ***********************************************************
+
 int success(FlutterPlatformMessageResponseHandle* handle,
             std::unique_ptr<Value> value = std::unique_ptr<Value>()) {
   if (!value) {
     value = val();
   }
   auto result = &value->build();
-  fprintf(stderr, "<=\n  result:\n");
+  fprintf(stderr, "<=\n  result: ");
   stdPrint(result, 4);
   fprintf(stderr, "--------------------------------------------------------------------------\n");
   return platch_respond_success_std(handle, result);
@@ -426,20 +422,59 @@ int not_implemented(FlutterPlatformMessageResponseHandle* handle) {
   return platch_respond_not_implemented(handle);
 }
 
+void on_receive(char* channel, struct platch_obj* object, const char* handlerName) {
+  fprintf(stderr,
+          "--------------------------------------------------------------------------\n"
+          "%s(%s)\n"
+          "  method: %s\n"
+          "  args: ",
+          handlerName, channel, object->method);
+  stdPrint(&(object->std_arg), 4);
+}
+
+int on_invoke_response(struct platch_obj *object, void *userdata) {
+  if (object->codec == kNotImplemented) {
+    printf("channel not implemented on flutter side\n");
+    return 0;
+  }
+
+  if (object->success) {
+    printf("on_response_std\n"
+           "  result: ");
+    stdPrint(&object->std_result, 4);
+  } else {
+    printf("on_response_std\n");
+    printf("  error code: %s\n"
+           "  error message: %s\n"
+           "  error details: ", object->error_code,
+           (object->error_msg != NULL) ? object->error_msg : "null");
+    stdPrint(&object->std_error_details, 4);
+  }
+  return 0;
+}
+
+void invoke(std::string channel, std::string method, std::unique_ptr<Value> arguments) {
+  fprintf(stderr, "invoke(%s, %s)\n  value: ", channel.c_str(), method.c_str());
+  stdPrint(&arguments->build(), 4);
+  platch_call_std(const_cast<char*>(channel.c_str()), const_cast<char*>(method.c_str()),
+                  &arguments->build(), on_invoke_response, nullptr);
+}
+
+// ***********************************************************
+
 static int on_receive_core(
     char *channel, struct platch_obj *object,
     FlutterPlatformMessageResponseHandle *handle) {
-  fprintf(stderr,
-          "--------------------------------------------------------------------------\n"
-          "on_receive_core(%s)\n"
-          "  method: %s\n"
-          "  args: \n",
-          channel, object->method);
-  stdPrint(&(object->std_arg), 4);
+  on_receive(channel, object, "on_receive_core");
 
   if (strcmp(object->method, "Firebase#initializeApp") == 0) {
+
+    // TODO
+
   } else if (strcmp(object->method, "Firebase#initializeCore") == 0) {
+
     std::vector<firebase::App *> apps;
+    // The default app values are read from google-services.json in the current working directory.
     apps.push_back(firebase::App::Create());
 
     auto result = std::unique_ptr<ValueList>(new ValueList());
@@ -464,44 +499,23 @@ static int on_receive_core(
       appMap->add(val("options"), std::move(options));
       result->add(std::move(appMap));
     }
-    fprintf(stderr, "<=\n  result:\n");
-    auto builtResult = result->build();
-    stdPrint(&builtResult, 4);
-    fprintf(stderr, "--------------------------------------------------------------------------\n");
-    return platch_respond_success_std(handle, &builtResult);
-  } else if (strcmp(object->method,
-                    "FirebaseApp#setAutomaticDataCollectionEnabled") == 0) {
-  } else if (strcmp(object->method,
-                    "FirebaseApp#setAutomaticResourceManagementEnabled") == 0) {
+    return success(handle, std::move(result));
+
+  } else if (strcmp(object->method, "FirebaseApp#setAutomaticDataCollectionEnabled") == 0) {
+
+    // TODO
+
+  } else if (strcmp(object->method, "FirebaseApp#setAutomaticResourceManagementEnabled") == 0) {
+
+    // TODO
+
   } else if (strcmp(object->method, "FirebaseApp#delete") == 0) {
+
+    // TODO
+
   }
 
-  fprintf(stderr, "<= XXXXXXXXXXXXXXXX (not implemented) XXXXXXXXXXXXXXXX\n"
-                  "--------------------------------------------------------------------------\n");
-  return platch_respond_not_implemented(handle);
-}
-
-int on_invoke_response(struct platch_obj *object, void *userdata) {
-    if (object->codec == kNotImplemented) {
-      printf("channel not implemented on flutter side\n");
-      return 0;
-    }
-
-    if (object->success) {
-        printf("on_response_std\n"
-               "  success\n"
-               "  result:\n");
-        stdPrint(&object->std_result, 4);
-    } else {
-        printf("on_response_std\n");
-        printf("  failure\n"
-               "  error code: %s\n"
-               "  error message: %s\n"
-               "  error details:\n", object->error_code,
-               (object->error_msg != NULL) ? object->error_msg : "null");
-        stdPrint(&object->std_error_details, 4);
-    }
-    return 0;
+  return not_implemented(handle);
 }
 
 class SnapshotListener {
@@ -524,19 +538,14 @@ public:
     }
     auto value = val(snapshot.value());
     auto convertedValue = value->build();
-    fprintf(stderr, "sendEvent(%d, %s, %s)\n  value:\n", id, eventType.c_str(), snapshot.key());
-    stdPrint(&convertedValue, 4);
-    platch_call_std(const_cast<char*>(channel.c_str()), "Event", &arguments->build(),
-                    on_invoke_response, nullptr);
+    invoke(channel, "Event", std::move(arguments));
   }
 
   void cancel(const firebase::database::Error& error) {
     auto arguments = std::unique_ptr<ValueMap>(new ValueMap());
     arguments->add(val("handle"), val(id));
     arguments->add(val("error"), val(error));
-    fprintf(stderr, "cancel(%d)\n  error: %d\n", id, error);
-    platch_call_std(const_cast<char*>(channel.c_str()), "Error", &arguments->build(),
-                    on_invoke_response, nullptr);    
+    invoke(channel, "Error", std::move(arguments));
   }
 
 private:
@@ -601,21 +610,15 @@ auto child_listeners = std::map<int, ChildListenerImpl*>();
 static int on_receive_database(
     char *channel, struct platch_obj *object,
     FlutterPlatformMessageResponseHandle *handle) {
-  fprintf(stderr,
-          "--------------------------------------------------------------------------\n"
-          "on_receive_database(%s)\n"
-          "  method: %s\n"
-          "  args: \n",
-          channel, object->method);
-  stdPrint(&(object->std_arg), 4);
+  on_receive(channel, object, "on_receive_database");
 
-  auto *arg = &(object->std_arg);
-  if (arg->type != kStdMap) {
-    return error(handle, "args isn't a args");
+  auto *args = &(object->std_arg);
+  if (args->type != kStdMap) {
+    return error(handle, "arguments isn't a map");
   }
 
   firebase::App *app = nullptr;
-  auto appName = get_string(arg, "app");
+  auto appName = get_string(args, "app");
   if (appName) {
     app = firebase::App::GetInstance(appName->c_str());
   } else {
@@ -626,7 +629,7 @@ static int on_receive_database(
   }
 
   firebase::database::Database *database = nullptr;
-  auto databaseUrl = get_string(arg, "databaseURL");
+  auto databaseUrl = get_string(args, "databaseURL");
   if (databaseUrl) {
     database = firebase::database::Database::GetInstance(app, databaseUrl->c_str());
   } else {
@@ -637,30 +640,60 @@ static int on_receive_database(
   }
 
   if (strcmp(object->method, "FirebaseDatabase#goOnline") == 0) {
+
+    // TODO
+
   } else if (strcmp(object->method, "FirebaseDatabase#goOffline") == 0) {
+
+    // TODO
+
   } else if (strcmp(object->method, "FirebaseDatabase#purgeOutstandingWrites") == 0) {
+
+    // TODO
+
   } else if (strcmp(object->method, "FirebaseDatabase#setPersistenceEnabled") == 0) {
 
-    database->set_persistence_enabled(stdmap_get_str(arg, "enabled")->bool_value);
+    database->set_persistence_enabled(stdmap_get_str(args, "enabled")->bool_value);
     return success(handle);
 
   } else if (strcmp(object->method, "FirebaseDatabase#setPersistenceCacheSizeBytes") == 0) {
 
-    // TODO(bpm)
-    // database->set_persistence_cache_size(stdmap_get_str(arg, "cacheSize")->int32_value);
+    // TODO: This setting doesn't seem to exist on desktop.
+    // database->set_persistence_cache_size(stdmap_get_str(args, "cacheSize")->int32_value);
     return success(handle);
 
   } else if (strcmp(object->method, "DatabaseReference#set") == 0) {
+
+    // TODO
+
   } else if (strcmp(object->method, "DatabaseReference#update") == 0) {
+
+    // TODO
+
   } else if (strcmp(object->method, "DatabaseReference#setPriority") == 0) {
+
+    // TODO
+
   } else if (strcmp(object->method, "DatabaseReference#runTransaction") == 0) {
+
+    // TODO
+
   } else if (strcmp(object->method, "OnDisconnect#set") == 0) {
+
+    // TODO
+
   } else if (strcmp(object->method, "OnDisconnect#update") == 0) {
+
+    // TODO
+
   } else if (strcmp(object->method, "OnDisconnect#cancel") == 0) {
+
+    // TODO
+
   } else if (strcmp(object->method, "Query#keepSynced") == 0) {
 
-    auto query = get_query(database, arg);
-    auto value = get_bool(arg, "value");
+    auto query = get_query(database, args);
+    auto value = get_bool(args, "value");
     if (value) {
       query.SetKeepSynchronized(*value);
       return success(handle);
@@ -669,8 +702,8 @@ static int on_receive_database(
   } else if (strcmp(object->method, "Query#observe") == 0) {
 
     int id = next_listener_id++;
-    auto query = get_query(database, arg);
-    auto eventType = get_string(arg, "eventType");
+    auto query = get_query(database, args);
+    auto eventType = get_string(args, "eventType");
     if (eventType) {
       if (eventType == EVENT_TYPE_VALUE) {
         auto listener = new ValueListenerImpl(channel, *eventType, id);
@@ -686,8 +719,8 @@ static int on_receive_database(
 
   } else if (strcmp(object->method, "Query#removeObserver") == 0) {
 
-    auto id = get_int(arg, "handle");
-    auto query = get_query(database, arg);    
+    auto id = get_int(args, "handle");
+    auto query = get_query(database, args);    
     if (!id) {
       // Fall through.
     } else if (value_listeners.count(*id)) {
@@ -709,236 +742,9 @@ static int on_receive_database(
   return not_implemented(handle);
 }
 
-// static int on_receive_isolate(char *channel, struct platch_obj *object,
-// FlutterPlatformMessageResponseHandle *handle) {
-//     if (object->binarydata_size > sizeof(services.isolate_id)) {
-//         return EINVAL;
-//     } else {
-//         memcpy(services.isolate_id, object->binarydata,
-//         object->binarydata_size);
-//     }
-
-//     return platch_respond_not_implemented(handle);
-// }
-
-// static int on_receive_platform(char *channel, struct platch_obj *object,
-// FlutterPlatformMessageResponseHandle *handle) {
-//     struct json_value *value;
-//     struct json_value *arg = &(object->json_arg);
-//     int ok;
-
-//     if (strcmp(object->method, "Clipboard.setData") == 0) {
-//         /*
-//          *  Clipboard.setData(Map data)
-//          *      Places the data from the text entry of the argument,
-//          *      which must be a Map, onto the system clipboard.
-//          */
-//     } else if (strcmp(object->method, "Clipboard.getData") == 0) {
-//         /*
-//          *  Clipboard.getData(String format)
-//          *      Returns the data that has the format specified in the
-//          argument
-//          *      from the system clipboard. The only currently supported is
-//          "text/plain".
-//          *      The result is a Map with a single key, "text".
-//          */
-//     } else if (strcmp(object->method, "HapticFeedback.vibrate") == 0) {
-//         /*
-//          *  HapticFeedback.vibrate(void)
-//          *      Triggers a system-default haptic response.
-//          */
-//     } else if (strcmp(object->method, "SystemSound.play") == 0) {
-//         /*
-//          *  SystemSound.play(String soundName)
-//          *      Triggers a system audio effect. The argument must
-//          *      be a String describing the desired effect; currently only
-//          "click" is
-//          *      supported.
-//          */
-//     } else if (strcmp(object->method,
-//     "SystemChrome.setPreferredOrientations") == 0) {
-//         /*
-//          *  SystemChrome.setPreferredOrientations(DeviceOrientation[])
-//          *      Informs the operating system of the desired orientation of
-//          the display. The argument is a [List] of
-//          *      values which are string representations of values of the
-//          [DeviceOrientation] enum.
-//          *
-//          *  enum DeviceOrientation {
-//          *      portraitUp, landscapeLeft, portraitDown, landscapeRight
-//          *  }
-//          */
-
-//         value = &object->json_arg;
-
-//         if ((value->type != kJsonArray) || (value->size == 0)) {
-//             return platch_respond_illegal_arg_json(
-//                 handle,
-//                 "Expected `arg` to be an array with minimum size 1."
-//             );
-//         }
-
-//         bool preferred_orientations[kLandscapeRight+1] = {0};
-
-//         for (int i = 0; i < value->size; i++) {
-
-//             if (value->array[i].type != kJsonString) {
-//                 return platch_respond_illegal_arg_json(
-//                     handle,
-//                     "Expected `arg` to to only contain strings."
-//                 );
-//             }
-
-//             enum device_orientation o =
-//             ORIENTATION_FROM_STRING(value->array[i].string_value);
-
-//             if (o == -1) {
-//                 return platch_respond_illegal_arg_json(
-//                     handle,
-//                     "Expected `arg` to only contain stringifications of the "
-//                     "`DeviceOrientation` enum."
-//                 );
-//             }
-
-//             // if the list contains the current orientation, we just return
-//             and don't change the current orientation at all. if (o ==
-//             flutterpi.view.orientation) {
-//                 return 0;
-//             }
-
-//             preferred_orientations[o] = true;
-//         }
-
-//         // if we have to change the orientation, we go through the
-//         orientation enum in the defined order and
-//         // select the first one that is preferred by flutter.
-//         for (int i = kPortraitUp; i <= kLandscapeRight; i++) {
-//             if (preferred_orientations[i]) {
-//                 FlutterEngineResult result;
-
-//                 flutterpi_fill_view_properties(true, i, false, 0);
-
-//                 compositor_apply_cursor_state(true, flutterpi.view.rotation,
-//                 flutterpi.display.pixel_ratio);
-
-//                 // send updated window metrics to flutter
-//                 result =
-//                 flutterpi.flutter.libflutter_engine.FlutterEngineSendWindowMetricsEvent(flutterpi.flutter.engine,
-//                 &(const FlutterWindowMetricsEvent) {
-//                     .struct_size = sizeof(FlutterWindowMetricsEvent),
-//                     .width = flutterpi.view.width,
-//                     .height = flutterpi.view.height,
-//                     .pixel_ratio = flutterpi.display.pixel_ratio
-//                 });
-//                 if (result != kSuccess) {
-//                     fprintf(stderr, "[services] Could not send updated window
-//                     metrics to flutter. FlutterEngineSendWindowMetricsEvent:
-//                     %s\n", FLUTTER_RESULT_TO_STRING(result)); return
-//                     platch_respond_error_json(handle, "engine-error",
-//                     "Could not send updated window metrics to flutter",
-//                     NULL);
-//                 }
-
-//                 return platch_respond_success_json(handle, NULL);
-//             }
-//         }
-
-//         return platch_respond_illegal_arg_json(
-//             handle,
-//             "Expected `arg` to contain at least one element."
-//         );
-//     } else if (strcmp(object->method,
-//     "SystemChrome.setApplicationSwitcherDescription") == 0) {
-//         /*
-//          *  SystemChrome.setApplicationSwitcherDescription(Map description)
-//          *      Informs the operating system of the desired label and color
-//          to be used
-//          *      to describe the application in any system-level application
-//          lists (e.g application switchers)
-//          *      The argument is a Map with two keys, "label" giving a string
-//          description,
-//          *      and "primaryColor" giving a 32 bit integer value (the lower
-//          eight bits being the blue channel,
-//          *      the next eight bits being the green channel, the next eight
-//          bits being the red channel,
-//          *      and the high eight bits being set, as from Color.value for an
-//          opaque color).
-//          *      The "primaryColor" can also be zero to indicate that the
-//          system default should be used.
-//          */
-
-//         value = jsobject_get(arg, "label");
-//         if (value && (value->type == kJsonString))
-//             snprintf(services.label, sizeof(services.label), "%s",
-//             value->string_value);
-
-//         return platch_respond_success_json(handle, NULL);
-//     } else if (strcmp(object->method,
-//     "SystemChrome.setEnabledSystemUIOverlays") == 0) {
-//         /*
-//          *  SystemChrome.setEnabledSystemUIOverlays(List overlays)
-//          *      Specifies the set of system overlays to have visible when the
-//          application
-//          *      is running. The argument is a List of values which are
-//          *      string representations of values of the SystemUIOverlay enum.
-//          *
-//          *  enum SystemUIOverlay {
-//          *      top, bottom
-//          *  }
-//          *
-//          */
-//     } else if (strcmp(object->method, "SystemChrome.restoreSystemUIOverlays")
-//     == 0) {
-//         /*
-//          * SystemChrome.restoreSystemUIOverlays(void)
-//          */
-//     } else if (strcmp(object->method, "SystemChrome.setSystemUIOverlayStyle")
-//     == 0) {
-//         /*
-//          *  SystemChrome.setSystemUIOverlayStyle(struct SystemUIOverlayStyle)
-//          *
-//          *  enum Brightness:
-//          *      light, dark
-//          *
-//          *  struct SystemUIOverlayStyle:
-//          *      systemNavigationBarColor: null / uint32
-//          *      statusBarColor: null / uint32
-//          *      statusBarIconBrightness: null / Brightness
-//          *      statusBarBrightness: null / Brightness
-//          *      systemNavigationBarIconBrightness: null / Brightness
-//          */
-//     } else if (strcmp(object->method, "SystemNavigator.pop") == 0) {
-//         flutterpi_schedule_exit();
-//     }
-
-//     return platch_respond_not_implemented(handle);
-// }
-
-// static int on_receive_accessibility(char *channel, struct platch_obj *object,
-// FlutterPlatformMessageResponseHandle *handle) {
-//     return platch_respond_not_implemented(handle);
-// }
-
-// static int on_receive_platform_views(char *channel, struct platch_obj
-// *object, FlutterPlatformMessageResponseHandle *handle) {
-//     struct json_value *value;
-//     struct json_value *arg = &(object->json_arg);
-//     int ok;
-
-//     if STREQ("create", object->method) {
-//         return platch_respond_not_implemented(handle);
-//     } else if STREQ("dispose", object->method) {
-//         return platch_respond_not_implemented(handle);
-//     }
-
-//     return platch_respond_not_implemented(handle);
-// }
-
 int firebase_init(void) {
-  int ok;
-
-  ok = plugin_registry_set_receiver(FIREBASE_CHANNEL_CORE, kStandardMethodCall,
-                                    on_receive_core);
+  int ok = plugin_registry_set_receiver(FIREBASE_CHANNEL_CORE, kStandardMethodCall,
+      on_receive_core);
   if (ok != 0) {
     fprintf(
         stderr,
@@ -957,37 +763,7 @@ int firebase_init(void) {
     goto fail_remove_core_receiver;
   }
 
-  // ok = plugin_registry_set_receiver("flutter/platform", kJSONMethodCall,
-  // on_receive_platform); if (ok != 0) {
-  //     fprintf(stderr, "[services-plugin] could not set \"flutter/platform\"
-  //     ChannelObject receiver: %s\n", strerror(ok)); goto
-  //     fail_remove_isolate_receiver;
-  // }
-
-  // ok = plugin_registry_set_receiver("flutter/accessibility", kBinaryCodec,
-  // on_receive_accessibility); if (ok != 0) {
-  //     fprintf(stderr, "[services-plugin] could not set
-  //     \"flutter/accessibility\" ChannelObject receiver: %s\n", strerror(ok));
-  //     goto fail_remove_platform_receiver;
-  // }
-
-  // ok = plugin_registry_set_receiver("flutter/platform_views",
-  // kStandardMethodCall, on_receive_platform_views); if (ok != 0) {
-  //     fprintf(stderr, "[services-plugin] could not set
-  //     \"flutter/platform_views\" ChannelObject receiver: %s\n",
-  //     strerror(ok)); goto fail_remove_accessibility_receiver;
-  // }
-
   return 0;
-
-  // fail_remove_platform_views_receiver:
-  // plugin_registry_remove_receiver("flutter/platform_views");
-
-  // fail_remove_accessibility_receiver:
-  // plugin_registry_remove_receiver("flutter/accessibility");
-
-  // fail_remove_platform_receiver:
-  // plugin_registry_remove_receiver("flutter/platform");
 
 fail_remove_database_receiver:
   plugin_registry_remove_receiver(FIREBASE_CHANNEL_DATABASE);
@@ -1002,10 +778,5 @@ fail_return_ok:
 int firebase_deinit(void) {
   plugin_registry_remove_receiver(FIREBASE_CHANNEL_CORE);
   plugin_registry_remove_receiver(FIREBASE_CHANNEL_DATABASE);
-  // plugin_registry_remove_receiver("flutter/isolate");
-  // plugin_registry_remove_receiver("flutter/platform");
-  // plugin_registry_remove_receiver("flutter/accessibility");
-  // plugin_registry_remove_receiver("flutter/platform_views");
-
   return 0;
 }
