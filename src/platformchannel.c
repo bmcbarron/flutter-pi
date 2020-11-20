@@ -440,25 +440,37 @@ int platch_decode_value_std(uint8_t **pbuffer, size_t *premaining, struct std_va
 	uint32_t size = 0;
 	int ok;
 	
+  //fprintf(stderr, "platch_decode_value_std(remaining=%d)\n", *premaining);
 	ok = _read8(pbuffer, &type_byte, premaining);
-	if (ok != 0) return ok;
+	if (ok != 0) {
+	  //fprintf(stderr, "platch_decode_value_std _read8 error:%d\n", ok);
+		return ok;
+	}
 
 	type = type_byte;
 	value_out->type = type;
+	//fprintf(stderr, "platch_decode_value_std type=%d\n", type);
 	switch (type) {
 		case kStdNull:
+    	//fprintf(stderr, " == null\n");
+			break;
 		case kStdTrue:
+    	//fprintf(stderr, " == true\n");
+			break;
 		case kStdFalse:
+    	//fprintf(stderr, " == false\n");
 			break;
 		case kStdInt32:
 			ok = _read32(pbuffer, (uint32_t*)&value_out->int32_value, premaining);
 			if (ok != 0) return ok;
 
+    	//fprintf(stderr, " == %d\n", value_out->int32_value);
 			break;
 		case kStdInt64:
 			ok = _read64(pbuffer, (uint64_t*)&value_out->int64_value, premaining);
 			if (ok != 0) return ok;
 
+    	//fprintf(stderr, " == %ld\n", value_out->int64_value);
 			break;
 		case kStdFloat64:
 			ok = _align((uintptr_t*) pbuffer, 8, premaining);
@@ -467,6 +479,7 @@ int platch_decode_value_std(uint8_t **pbuffer, size_t *premaining, struct std_va
 			ok = _read64(pbuffer, (uint64_t*) &value_out->float64_value, premaining);
 			if (ok != 0) return ok;
 
+    	//fprintf(stderr, " == %lf\n", value_out->float64_value);
 			break;
 		case kStdLargeInt:
 		case kStdString:
@@ -480,6 +493,7 @@ int platch_decode_value_std(uint8_t **pbuffer, size_t *premaining, struct std_va
 			memcpy(value_out->string_value, *pbuffer, size);
 			_advance((uintptr_t*) pbuffer, size, premaining);
 
+    	//fprintf(stderr, " == %s\n", value_out->string_value);
 			break;
 		case kStdUInt8Array:
 			ok = _readSize(pbuffer, &size, premaining);
@@ -489,6 +503,7 @@ int platch_decode_value_std(uint8_t **pbuffer, size_t *premaining, struct std_va
 			value_out->size = size;
 			value_out->uint8array = *pbuffer;
 
+    	//fprintf(stderr, " == int8 array(size=%d)\n", size);
 			ok = _advance((uintptr_t*) pbuffer, size, premaining);
 			if (ok != 0) return ok;
 
@@ -505,6 +520,7 @@ int platch_decode_value_std(uint8_t **pbuffer, size_t *premaining, struct std_va
 			value_out->size = size;
 			value_out->int32array = (int32_t*) *pbuffer;
 
+    	//fprintf(stderr, " == int32 array(size=%d)\n", size);
 			ok = _advance((uintptr_t*) pbuffer, size*4, premaining);
 			if (ok != 0) return ok;
 
@@ -521,6 +537,7 @@ int platch_decode_value_std(uint8_t **pbuffer, size_t *premaining, struct std_va
 			value_out->size = size;
 			value_out->int64array = (int64_t*) *pbuffer;
 
+    	//fprintf(stderr, " == int64 array(size=%d)\n", size);
 			ok = _advance((uintptr_t*) pbuffer, size*8, premaining);
 			if (ok != 0) return ok;
 
@@ -537,6 +554,7 @@ int platch_decode_value_std(uint8_t **pbuffer, size_t *premaining, struct std_va
 			value_out->size = size;
 			value_out->float64array = (double*) *pbuffer;
 
+    	//fprintf(stderr, " == double array(size=%d)\n", size);
 			ok = _advance((uintptr_t*) pbuffer, size*8, premaining);
 			if (ok != 0) return ok;
 			
@@ -548,6 +566,7 @@ int platch_decode_value_std(uint8_t **pbuffer, size_t *premaining, struct std_va
 			value_out->size = size;
 			value_out->list = calloc(size, sizeof(struct std_value));
 
+    	//fprintf(stderr, " == list(size=%d)\n", size);
 			for (int i = 0; i < size; i++) {
 				ok = platch_decode_value_std(pbuffer, premaining, &value_out->list[i]);
 				if (ok != 0) return ok;
@@ -565,6 +584,7 @@ int platch_decode_value_std(uint8_t **pbuffer, size_t *premaining, struct std_va
 
 			value_out->values = &value_out->keys[size];
 
+    	//fprintf(stderr, " == map(size=%d)\n", size);
 			for (int i = 0; i < size; i++) {
 				ok = platch_decode_value_std(pbuffer, premaining, &(value_out->keys[i]));
 				if (ok != 0) return ok;
@@ -575,6 +595,7 @@ int platch_decode_value_std(uint8_t **pbuffer, size_t *premaining, struct std_va
 
 			break;
 		default:
+		  //fprintf(stderr, "platch_decode_value_std unhandled type: %d", type);
 			return EBADMSG;
 	}
 
@@ -703,6 +724,7 @@ int platch_decode(uint8_t *buffer, size_t size, enum platch_codec codec, struct 
 	}
 	
 	object_out->codec = codec;
+	//fprintf(stderr, "platch_decode(codec=%d)\n");
 	switch (codec) {
 		case kStringCodec: ;
 			/// buffer is a non-null-terminated, UTF8-encoded string.
@@ -785,21 +807,37 @@ int platch_decode(uint8_t *buffer, size_t size, enum platch_codec codec, struct 
 
 			break;
 		case kStandardMethodCallResponse: ;
-			ok = _read8(&buffer_cursor, (uint8_t*) &object_out->success, &remaining);
+			//fprintf(stderr, "platch_decode:kStandardMethodCallResponse\n");
+			uint8_t result;
+			ok = _read8(&buffer_cursor, &result, &remaining);
+			assert(ok == 0);
+			object_out->success = (result == 0);
+			//ok = _read8(&buffer_cursor, (uint8_t*) &object_out->success, &remaining);
 
 			if (object_out->success) {
 				ok = platch_decode_value_std(&buffer_cursor, &remaining, &(object_out->std_result));
-				if (ok != 0) return ok;
+				if (ok != 0) {
+					//fprintf(stderr, "platch_decode:success result decode error: %d\n", ok);
+					return ok;
+				}
 			} else {
 				struct std_value error_code, error_msg;
 
 				ok = platch_decode_value_std(&buffer_cursor, &remaining, &error_code);
-				if (ok != 0) return ok;
+				if (ok != 0) {
+					//fprintf(stderr, "platch_decode:fail error_code decode error: %d\n", ok);
+					return ok;
+				}
 				ok = platch_decode_value_std(&buffer_cursor, &remaining, &error_msg);
-				if (ok != 0) return ok;
+				if (ok != 0) {
+					//fprintf(stderr, "platch_decode:fail error_code error_msg error: %d\n", ok);
+					return ok;
+				}
 				ok = platch_decode_value_std(&buffer_cursor, &remaining, &(object_out->std_error_details));
-				if (ok != 0) return ok;
-
+				if (ok != 0) {
+					//fprintf(stderr, "platch_decode:fail error_code error_details error: %d\n", ok);
+					return ok;
+				}
 				if ((error_code.type == kStdString) && ((error_msg.type == kStdString) || (error_msg.type == kStdNull))) {
 					object_out->error_code = error_code.string_value;
 					object_out->error_msg = (error_msg.type == kStdString) ? error_msg.string_value : NULL;
@@ -979,21 +1017,37 @@ int platch_encode(struct platch_obj *object, uint8_t **buffer_out, size_t *size_
 }
 
 void platch_on_response_internal(const uint8_t *buffer, size_t size, void *userdata) {
+	fprintf(stderr, "[%d] platch_on_response_internal(size=%d, userdata=%x)\n",
+	    gettid(), size, userdata);
 	struct platch_msg_resp_handler_data *handlerdata;
 	struct platch_obj object;
 	int ok;
 
 	handlerdata = (struct platch_msg_resp_handler_data *) userdata;
 	ok = platch_decode((uint8_t*) buffer, size, handlerdata->codec, &object);
-	if (ok != 0) return;
+	if (ok != 0) {
+		fprintf(stderr, "platch_on_response_internal:platch_decode error: %d\n", ok);
+		return;
+	}
+
 
 	ok = handlerdata->on_response(&object, handlerdata->userdata);
-	if (ok != 0) return;
+	if (ok != 0 && ok != 202) {
+		fprintf(stderr, "platch_on_response_internal:on_response error: %d\n", ok);
+		return;
+	}
 
 	free(handlerdata);
 
+	// 202 means object will be freed by the response handler.
+	if (ok == 202) {
+		return;
+	}
 	ok = platch_free_obj(&object);
-	if (ok != 0) return;
+	if (ok != 0) {
+		fprintf(stderr, "platch_on_response_internal:platch_free_obj error: %d\n", ok);
+		return;
+	}
 }
 
 int platch_send(char *channel, struct platch_obj *object, enum platch_codec response_codec, platch_msg_resp_callback on_response, void *userdata) {
@@ -1017,32 +1071,34 @@ int platch_send(char *channel, struct platch_obj *object, enum platch_codec resp
 		handlerdata->on_response = on_response;
 		handlerdata->userdata = userdata;
 
-		result = flutterpi.flutter.libflutter_engine.FlutterPlatformMessageCreateResponseHandle(flutterpi.flutter.engine, platch_on_response_internal, handlerdata, &response_handle);
-		if (result != kSuccess) {
-			fprintf(stderr, "[flutter-pi] Error create platform message response handle. FlutterPlatformMessageCreateResponseHandle: %s\n", FLUTTER_RESULT_TO_STRING(result));
-			goto fail_free_handlerdata;
-		}
+		// result = flutterpi.flutter.libflutter_engine.FlutterPlatformMessageCreateResponseHandle(flutterpi.flutter.engine, platch_on_response_internal, handlerdata, &response_handle);
+		// if (result != kSuccess) {
+		// 	fprintf(stderr, "[flutter-pi] Error create platform message response handle. FlutterPlatformMessageCreateResponseHandle: %s\n", FLUTTER_RESULT_TO_STRING(result));
+		// 	goto fail_free_handlerdata;
+		// }
 	}
 
 	ok = flutterpi_send_platform_message(
 		channel,
 		buffer,
 		size,
-		response_handle
+		handlerdata ? platch_on_response_internal : NULL,
+		handlerdata
+		// response_handle
 	);
 	if (ok != 0) {
 		goto fail_release_handle;
 	}
 
 	// TODO: This won't work if we're not on the main thread
-	if (on_response) {
-		result = flutterpi.flutter.libflutter_engine.FlutterPlatformMessageReleaseResponseHandle(flutterpi.flutter.engine, response_handle);
-		if (result != kSuccess) {
-			fprintf(stderr, "[flutter-pi] Error releasing platform message response handle. FlutterPlatformMessageReleaseResponseHandle: %s\n", FLUTTER_RESULT_TO_STRING(result));
-			ok = EIO;
-			goto fail_free_buffer;
-		}
-	}
+	// if (on_response) {
+	// 	result = flutterpi.flutter.libflutter_engine.FlutterPlatformMessageReleaseResponseHandle(flutterpi.flutter.engine, response_handle);
+	// 	if (result != kSuccess) {
+	// 		fprintf(stderr, "[flutter-pi] Error releasing platform message response handle. FlutterPlatformMessageReleaseResponseHandle: %s\n", FLUTTER_RESULT_TO_STRING(result));
+	// 		ok = EIO;
+	// 		goto fail_free_buffer;
+	// 	}
+	// }
 
 	if (object->codec != kBinaryCodec) {
 		free(buffer);
@@ -1052,9 +1108,9 @@ int platch_send(char *channel, struct platch_obj *object, enum platch_codec resp
 
 
 	fail_release_handle:
-	if (on_response) {
-		flutterpi.flutter.libflutter_engine.FlutterPlatformMessageReleaseResponseHandle(flutterpi.flutter.engine, response_handle);
-	}
+	// if (on_response) {
+	// 	flutterpi.flutter.libflutter_engine.FlutterPlatformMessageReleaseResponseHandle(flutterpi.flutter.engine, response_handle);
+	// }
 
 	fail_free_buffer:
 	if (object->codec != kBinaryCodec) {

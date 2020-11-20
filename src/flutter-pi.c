@@ -26,6 +26,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <linux/input.h>
+#include <unistd.h>
+#include <sys/syscall.h>
 
 #include <xf86drm.h>
 #include <xf86drmMode.h>
@@ -51,6 +53,10 @@
 //#include <plugins/services.h>
 #include <plugins/text_input.h>
 #include <plugins/raw_keyboard.h>
+
+long gettid() {
+	return syscall(SYS_gettid);
+}
 
 const char const* usage ="\
 flutter-pi - run flutter apps on your Raspberry Pi.\n\
@@ -720,24 +726,41 @@ static void on_post_flutter_task(
 static int on_send_platform_message(
 	void *userdata
 ) {
-	struct platform_message *msg;
-	FlutterEngineResult result;
-
-	msg = userdata;
-
+  fprintf(stderr, "[%d] on_send_platform_message(%x)\n", gettid(), userdata);
+	struct platform_message *msg = userdata;
+	FlutterEngineResult result = kSuccess;
 	if (msg->is_response) {
+		fprintf(stderr, "FlutterEngineSendPlatformMessageResponse\n");
 		result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessageResponse(flutterpi.flutter.engine, msg->target_handle, msg->message, msg->message_size);
 	} else {
-		result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessage(
-			flutterpi.flutter.engine,
-			&(FlutterPlatformMessage) {
-				.struct_size = sizeof(FlutterPlatformMessage),
-				.channel = msg->target_channel,
-				.message = msg->message,
-				.message_size = msg->message_size,
-				.response_handle = msg->response_handle
+  	FlutterPlatformMessageResponseHandle *response_handle = NULL;
+		if (msg->on_response) {
+			fprintf(stderr, "FlutterPlatformMessageCreateResponseHandle on_response(%x)\n", msg->on_response_data);
+			result = flutterpi.flutter.libflutter_engine.FlutterPlatformMessageCreateResponseHandle(flutterpi.flutter.engine, msg->on_response, msg->on_response_data, &response_handle);
+			if (result != kSuccess) {
+				fprintf(stderr, "[flutter-pi] Error create platform message response handle. FlutterPlatformMessageCreateResponseHandle: %s\n", FLUTTER_RESULT_TO_STRING(result));
 			}
-		);
+		}
+		if (result == kSuccess) {
+			fprintf(stderr, "FlutterEngineSendPlatformMessage\n");
+			result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessage(
+				flutterpi.flutter.engine,
+				&(FlutterPlatformMessage) {
+					.struct_size = sizeof(FlutterPlatformMessage),
+					.channel = msg->target_channel,
+					.message = msg->message,
+					.message_size = msg->message_size,
+					.response_handle = response_handle
+				}
+			);
+		}
+		if (msg->on_response) {
+			fprintf(stderr, "FlutterPlatformMessageReleaseResponseHandle\n");
+			FlutterEngineResult result2 = flutterpi.flutter.libflutter_engine.FlutterPlatformMessageReleaseResponseHandle(flutterpi.flutter.engine, response_handle);
+			if (result2 != kSuccess) {
+				fprintf(stderr, "[flutter-pi] Error releasing platform message response handle. FlutterPlatformMessageReleaseResponseHandle: %s\n", FLUTTER_RESULT_TO_STRING(result2));
+			}
+		}
 	}
 
 	if (msg->message) {
@@ -761,28 +784,30 @@ int flutterpi_send_platform_message(
 	const char *channel,
 	const uint8_t *restrict message,
 	size_t message_size,
-	FlutterPlatformMessageResponseHandle *responsehandle
+	send_resp_callback on_response,
+  void* on_response_data	
+	//FlutterPlatformMessageResponseHandle *responsehandle
 ) {
 	struct platform_message *msg;
 	FlutterEngineResult result;
 	int ok;
 	
-	if (runs_platform_tasks_on_current_thread(NULL)) {
-		result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessage(
-			flutterpi.flutter.engine,
-			&(const FlutterPlatformMessage) {
-				.struct_size = sizeof(FlutterPlatformMessage),
-				.channel = channel,
-				.message = message,
-				.message_size = message_size,
-				.response_handle = responsehandle
-			}
-		);
-		if (result != kSuccess) {
-			fprintf(stderr, "[flutter-pi] Error sending platform message. FlutterEngineSendPlatformMessage: %s\n", FLUTTER_RESULT_TO_STRING(result));
-			return EIO;
-		}
-	} else {
+	// if (runs_platform_tasks_on_current_thread(NULL)) {
+	// 	result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessage(
+	// 		flutterpi.flutter.engine,
+	// 		&(const FlutterPlatformMessage) {
+	// 			.struct_size = sizeof(FlutterPlatformMessage),
+	// 			.channel = channel,
+	// 			.message = message,
+	// 			.message_size = message_size,
+	// 			.response_handle = responsehandle
+	// 		}
+	// 	);
+	// 	if (result != kSuccess) {
+	// 		fprintf(stderr, "[flutter-pi] Error sending platform message. FlutterEngineSendPlatformMessage: %s\n", FLUTTER_RESULT_TO_STRING(result));
+	// 		return EIO;
+	// 	}
+	// } else {
 		msg = calloc(1, sizeof *msg);
 		if (msg == NULL) {
 			return ENOMEM;
@@ -795,7 +820,9 @@ int flutterpi_send_platform_message(
 			return ENOMEM;
 		}
 
-		msg->response_handle = responsehandle;
+		msg->on_response = on_response;
+		msg->on_response_data = on_response_data;
+		// msg->response_handle = responsehandle;
 		
 		if (message && message_size) {
 			msg->message_size = message_size;
@@ -822,7 +849,7 @@ int flutterpi_send_platform_message(
 			free(msg);
 			return ok;
 		}
-	}
+	// }
 
 	return 0;
 }
@@ -836,19 +863,19 @@ int flutterpi_respond_to_platform_message(
 	FlutterEngineResult result;
 	int ok;
 	
-	if (runs_platform_tasks_on_current_thread(NULL)) {
-		result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessageResponse(
-			flutterpi.flutter.engine,
-			handle,
-			message,
-			message_size
-		);
-		if (result != kSuccess) {
-			fprintf(stderr, "[flutter-pi] Error sending platform message response. FlutterEngineSendPlatformMessageResponse: %s\n", FLUTTER_RESULT_TO_STRING(result));
-			return EIO;
-		}
-	} else {
-		msg = malloc(sizeof *msg);
+	// if (runs_platform_tasks_on_current_thread(NULL)) {
+	// 	result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessageResponse(
+	// 		flutterpi.flutter.engine,
+	// 		handle,
+	// 		message,
+	// 		message_size
+	// 	);
+	// 	if (result != kSuccess) {
+	// 		fprintf(stderr, "[flutter-pi] Error sending platform message response. FlutterEngineSendPlatformMessageResponse: %s\n", FLUTTER_RESULT_TO_STRING(result));
+	// 		return EIO;
+	// 	}
+	// } else {
+		msg = calloc(1, sizeof *msg);
 		if (msg == NULL) {
 			return ENOMEM;
 		}
@@ -877,7 +904,7 @@ int flutterpi_respond_to_platform_message(
 			}
 			free(msg);
 		}
-	}
+	// }
 
 	return 0;
 }

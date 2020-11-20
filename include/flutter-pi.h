@@ -28,6 +28,8 @@
 #include <collection.h>
 #include <keyboard.h>
 
+long gettid();
+
 #define LOAD_EGL_PROC(flutterpi_struct, name) \
     do { \
 		char proc[256]; \
@@ -438,13 +440,17 @@ struct platform_task {
 	void *userdata;
 };
 
+typedef int (*send_resp_callback)(struct platch_obj *object, void *userdata);
+
 struct platform_message {
 	bool is_response;
 	union {
 		FlutterPlatformMessageResponseHandle *target_handle;
 		struct {
 			char *target_channel;
-			FlutterPlatformMessageResponseHandle *response_handle;
+			send_resp_callback* on_response;
+			void* on_response_data;
+			//FlutterPlatformMessageResponseHandle *response_handle;
 		};
 	};
 	uint8_t *message;
@@ -491,7 +497,9 @@ int flutterpi_send_platform_message(
 	const char *channel,
 	const uint8_t *__restrict__ message,
 	size_t message_size,
-	FlutterPlatformMessageResponseHandle *responsehandle
+	send_resp_callback on_response,
+  void* on_response_data
+	//FlutterPlatformMessageResponseHandle *responsehandle
 );
 
 int flutterpi_respond_to_platform_message(

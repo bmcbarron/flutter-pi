@@ -125,6 +125,7 @@ int plugin_registry_on_platform_message(FlutterPlatformMessage *message) {
 	data_copy = *data;
 	cpset_unlock(&plugin_registry.platch_obj_cbs);
 
+	fprintf(stderr, "[%d] plugin_registry_on_platform_message (codec=%d, size=%d)\n", gettid(), data_copy.codec, message->message_size);
 	ok = platch_decode((uint8_t*) message->message, message->message_size, data_copy.codec, &object);
 	if (ok != 0) {
 		return ok;

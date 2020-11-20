@@ -1,10 +1,13 @@
 #include <ctype.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <stdio.h>
+#include <time.h>
 
 #include <memory>
 #include <optional>
 #include <vector>
+#include <cassert>
 
 #include "firebase/app.h"
 #include "firebase/database.h"
@@ -303,21 +306,35 @@ std_value* get_map(std_value* args, char* key) {
   return result != nullptr && result->type == kStdMap ? result : nullptr;
 }
 
+std::optional<firebase::Variant> as_variant(std_value* value) {
+  switch (value->type) {
+    case kStdNull: return firebase::Variant::Null();
+    case kStdInt32: return firebase::Variant::FromInt64(value->int32_value);
+    case kStdInt64: return firebase::Variant::FromInt64(value->int64_value);
+    case kStdFloat64: return firebase::Variant::FromDouble(value->float64_value);
+    case kStdTrue: return firebase::Variant::True();
+    case kStdFalse: return firebase::Variant::False();
+    case kStdString: return firebase::Variant::MutableStringFromStaticString(value->string_value);
+    case kStdMap: {
+      auto result = firebase::Variant::EmptyMap();
+      for (int i = 0; i < value->size; ++i) {
+        auto k = as_variant(&(value->keys[i]));
+        auto v = as_variant(&(value->values[i]));
+        assert(k && v);
+        result.map()[*k] = *v;
+      }
+      return result; 
+    }
+  }
+  return std::nullopt;
+}
+
 std::optional<firebase::Variant> get_variant(std_value* args, char* key) {
   auto result = stdmap_get_str(args, key);
   if (result == nullptr) {
     return std::nullopt;
   }
-  switch (result->type) {
-    case kStdNull: return firebase::Variant::Null();
-    case kStdInt32: return firebase::Variant::FromInt64(result->int32_value);
-    case kStdInt64: return firebase::Variant::FromInt64(result->int64_value);
-    case kStdFloat64: return firebase::Variant::FromDouble(result->float64_value);
-    case kStdTrue: return firebase::Variant::True();
-    case kStdFalse: return firebase::Variant::False();
-    case kStdString: return firebase::Variant::MutableStringFromStaticString(result->string_value);
-  }
-  return std::nullopt;
+  return as_variant(result);
 }
 
 firebase::database::DatabaseReference get_reference(firebase::database::Database* database,
@@ -391,13 +408,16 @@ firebase::database::Query get_query(firebase::database::Database* database, std_
 
 // ***********************************************************
 
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t invoke_cond = PTHREAD_COND_INITIALIZER;
+
 int success(FlutterPlatformMessageResponseHandle* handle,
             std::unique_ptr<Value> result = std::unique_ptr<Value>()) {
   if (!result) {
     result = val();
   }
   auto builtResult = result->build();
-  fprintf(stderr, "<=\n  result: ");
+  fprintf(stderr, "[%d] <<<====\n  result: ", gettid());
   stdPrint(&builtResult, 4);
   fprintf(stderr, "--------------------------------------------------------------------------\n");
   return platch_respond_success_std(handle, &builtResult);
@@ -413,41 +433,45 @@ int error(FlutterPlatformMessageResponseHandle* handle, const char* msg, ...)
   vsnprintf(buffer, 256, msg, args);
   buffer[255] = '\0';
   va_end(args);
-  fprintf(stderr, "<=\n  error: %s\n", buffer);
+  fprintf(stderr, "[%d] <<<====\n  error: %s\n", gettid(), buffer);
   fprintf(stderr, "--------------------------------------------------------------------------\n");
   auto builtErrorDetails = errorDetails.build();
   return platch_respond_error_std(handle, "bpm", buffer, &builtErrorDetails);
 }
 
 int not_implemented(FlutterPlatformMessageResponseHandle* handle) {
-  fprintf(stderr, "<= XXXXXXXXXXXXXXXX (not implemented) XXXXXXXXXXXXXXXX\n"
-                  "--------------------------------------------------------------------------\n");
+  fprintf(stderr, "[%d] <<<==== XXXXXXXXXXXXXXXX (not implemented) XXXXXXXXXXXXXXXX\n"
+                  "--------------------------------------------------------------------------\n",
+                  gettid());
   return platch_respond_not_implemented(handle);
+}
+
+int pending() {
+  fprintf(stderr, "[%d] <<<==== ???????????????????? (pending) ????????????????????\n"
+                  "--------------------------------------------------------------------------\n",
+                  gettid());
+  return 0;
 }
 
 void on_receive(char* channel, struct platch_obj* object, const char* handlerName) {
   fprintf(stderr,
           "--------------------------------------------------------------------------\n"
-          "%s(%s)\n"
+          "[%d] %s(%s)\n"
           "  method: %s\n"
           "  args: ",
-          handlerName, channel, object->method);
+          gettid(), handlerName, channel, object->method);
   stdPrint(&(object->std_arg), 4);
 }
 
 int on_invoke_response(struct platch_obj *object, void *userdata) {
+  fprintf(stderr, "[%d] on_invoke_response\n", gettid());
   if (object->codec == kNotImplemented) {
-    printf("channel not implemented on flutter side\n");
-    return 0;
-  }
-
-  if (object->success) {
-    printf("on_response_std\n"
-           "  result: ");
+    fprintf(stderr, "  error: channel not implemented on flutter side\n");
+  } else if (object->success) {
+    fprintf(stderr, "  result: ");
     stdPrint(&object->std_result, 4);
   } else {
-    printf("on_response_std\n");
-    printf("  error code: %s\n"
+    fprintf(stderr, "  error code: %s\n"
            "  error message: %s\n"
            "  error details: ", object->error_code,
            (object->error_msg != NULL) ? object->error_msg : "null");
@@ -457,16 +481,104 @@ int on_invoke_response(struct platch_obj *object, void *userdata) {
 }
 
 void invoke(std::string channel, std::string method, std::unique_ptr<Value> arguments) {
-  fprintf(stderr, "invoke(%s, %s)\n  value: ", channel.c_str(), method.c_str());
+  fprintf(stderr, "[%d] invoke(%s, %s)\n  value: ", gettid(), channel.c_str(), method.c_str());
   auto builtArgs = arguments->build();
   stdPrint(&builtArgs, 4);
   platch_call_std(const_cast<char*>(channel.c_str()), const_cast<char*>(method.c_str()),
+                  &builtArgs, nullptr, nullptr);
+}
+
+struct Invocation {
+  bool complete;
+  bool cancelled;
+  platch_obj result;
+};
+
+int on_invoke_sync_response(struct platch_obj *object, void *userdata) {
+  fprintf(stderr, "[%d] on_invoke_sync_response\n", gettid());
+  if (object->codec == kNotImplemented) {
+    fprintf(stderr, "  error: channel not implemented on flutter side\n");
+  } else if (object->success) {
+    fprintf(stderr, "  result: ");
+    stdPrint(&object->std_result, 4);
+  } else {
+    fprintf(stderr, "  error code: %s\n"
+           "  error message: %s\n"
+           "  error details: ", object->error_code,
+           (object->error_msg != NULL) ? object->error_msg : "null");
+    stdPrint(&object->std_error_details, 4);
+  }
+  Invocation* invocation = static_cast<Invocation*>(userdata);
+  pthread_mutex_lock(&mutex);
+  if (!invocation->cancelled) {
+    invocation->result = *object;
+    invocation->complete = true;
+    invocation = nullptr;
+  }
+  pthread_mutex_unlock(&mutex);
+  if (invocation) {
+    delete invocation;
+    return 0;
+  }
+  pthread_cond_broadcast(&invoke_cond);
+  return 202;
+}
+
+enum InvokeResult {
+  INVOKE_RESULT,
+  INVOKE_TIMEDOUT,
+  INVOKE_FAILED,
+};
+
+InvokeResult invoke_sync(std::string channel, std::string method, std::unique_ptr<Value> arguments,
+                         timespec* deadline, platch_obj *response) {
+  fprintf(stderr, "[%d] invoke_sync(%s, %s)\n  value: ", gettid(), channel.c_str(), method.c_str());
+  auto builtArgs = arguments->build();
+  stdPrint(&builtArgs, 4);
+
+  auto invocation = new Invocation{false, false};
+
+  auto ok = platch_call_std(
+    const_cast<char*>(channel.c_str()), const_cast<char*>(method.c_str()),
                   &builtArgs,
-                  // TODO: This causes memory corruption in FlutterEngineSendPlatformMessage when
-                  // it accesses FlutterPlatformMessageCreateResponseHandle.
-                  // on_invoke_response,
-                  nullptr,
-                  nullptr);
+                  on_invoke_sync_response,
+                  invocation);
+  if (ok != 0) {
+    fprintf(stderr, "invoke_sync error: %d\n", ok);
+    return INVOKE_FAILED;
+  }
+
+  InvokeResult result = INVOKE_FAILED;
+  pthread_mutex_lock(&mutex);
+  while (true) {
+    auto ok = pthread_cond_timedwait(&invoke_cond, &mutex, deadline);
+    if (invocation->complete) {
+      *response = invocation->result;
+      result = INVOKE_RESULT;
+      break;
+    }
+    if (ok == 0) {
+      continue;
+    }
+    invocation->cancelled = true;
+    invocation = nullptr;
+    result = (ok == ETIMEDOUT) ? INVOKE_TIMEDOUT : INVOKE_FAILED;
+    break;
+  }
+  pthread_mutex_unlock(&mutex);
+  delete invocation;
+
+  fprintf(stderr, "[%d] invoke_sync(%s, %s)\n", gettid(), channel.c_str(), method.c_str());
+  if (response->success) {
+    fprintf(stderr, "  result: ");
+    stdPrint(&response->std_result, 4);
+  } else {
+    fprintf(stderr, "  error code: %s\n"
+           "  error message: %s\n"
+           "  error details: ", response->error_code,
+           (response->error_msg != NULL) ? response->error_msg : "null");
+  }
+  return result;
 }
 
 // ***********************************************************
@@ -482,9 +594,14 @@ static int on_receive_core(
 
   } else if (strcmp(object->method, "Firebase#initializeCore") == 0) {
 
-    std::vector<firebase::App *> apps;
     // The default app values are read from google-services.json in the current working directory.
-    apps.push_back(firebase::App::Create());
+    auto defaultApp = firebase::App::Create();
+    if (defaultApp == nullptr) {
+      return error(handle, "Failed to initialize Firebase.");
+    }
+
+    std::vector<firebase::App *> apps;
+    apps.push_back(defaultApp);
 
     auto result = std::unique_ptr<ValueList>(new ValueList());
     for (auto &app : apps) {
@@ -536,6 +653,8 @@ public:
     if (eventType != this->eventType) {
       return;
     }
+    fprintf(stderr, "[%d] sendEvent(%s, %s, %d, %s)\n", gettid(), channel.c_str(),
+            eventType.c_str(), id, firebase::Variant::TypeName(snapshot.value().type()));
     auto arguments = std::unique_ptr<ValueMap>(new ValueMap());
     auto snapshotMap = std::unique_ptr<ValueMap>(new ValueMap());
     snapshotMap->add(val("key"), val(snapshot.key()));
@@ -616,6 +735,54 @@ int next_listener_id = 0;
 auto value_listeners = std::map<int, ValueListenerImpl*>();
 auto child_listeners = std::map<int, ChildListenerImpl*>();
 
+class TransactionHandler {
+public:
+  TransactionHandler(const char* channel,
+      FlutterPlatformMessageResponseHandle *handle, firebase::Variant key, int timeout)
+      : channel(channel), handle(handle), key(key) {
+    auto ok = clock_gettime(CLOCK_REALTIME, &deadline);
+    assert(ok == 0);
+    deadline.tv_sec += timeout / 1000;
+    deadline.tv_nsec += (timeout % 1000) * 1000000;
+  }
+
+  firebase::database::TransactionResult OnCallback(firebase::database::MutableData* data) {
+    fprintf(stderr, "[%d] TransactionHandler.OnCallback(%s)\n", gettid(), data->key());
+    auto transaction = std::unique_ptr<ValueMap>(new ValueMap());
+    transaction->add(val("transactionKey"), val(key));
+    auto snapshot = std::unique_ptr<ValueMap>(new ValueMap());
+    snapshot->add(val("key"), val(data->key()));
+    snapshot->add(val("value"), val(data->value()));
+    transaction->add(val("snapshot"), std::move(snapshot));
+
+    platch_obj value;
+    auto transactionResult = firebase::database::kTransactionResultAbort;
+    auto result = invoke_sync(channel.c_str(), "DoTransaction", std::move(transaction), &deadline, &value);
+    if (result == INVOKE_RESULT) {
+      if (value.success) {
+        auto v = get_variant(&value.std_result, "value");
+        if (!v) {
+          fprintf(stderr, "[%d] TransactionHandler.OnCallback can't parse result type=%d\n",
+            gettid(), value.std_result.type);
+        } else {
+          data->set_value(*v);
+          fprintf(stderr, "setting type %s == %s\n", firebase::Variant::TypeName(v->type()),
+          firebase::Variant::TypeName(data->value().type()));
+          transactionResult = firebase::database::kTransactionResultSuccess;
+        }
+      }
+      platch_free_obj(&value);
+    }
+    return transactionResult;
+  }
+
+private:
+  const std::string channel;
+  const FlutterPlatformMessageResponseHandle *handle;
+  const firebase::Variant key;
+  timespec deadline;
+};
+
 static int on_receive_database(
     char *channel, struct platch_obj *object,
     FlutterPlatformMessageResponseHandle *handle) {
@@ -673,7 +840,23 @@ static int on_receive_database(
 
   } else if (strcmp(object->method, "DatabaseReference#set") == 0) {
 
-    // TODO
+    auto value = get_variant(args, "value");
+    if (!value) {
+      return error(handle, "value argument is required");
+    }
+    auto reference = get_reference(database, args);
+    auto priority = get_variant(args, "priority");
+    auto future = priority ? reference.SetValueAndPriority(*value, *priority) : reference.SetValue(*value);
+    future.OnCompletion([] (
+        const firebase::Future<void>& result, void* userData) {
+      auto handle = static_cast<FlutterPlatformMessageResponseHandle *>(userData);
+      if (result.error() == firebase::database::kErrorNone) {
+        success(handle);
+      } else {
+        error(handle, result.error_message());
+      }
+    }, handle);
+    return pending();
 
   } else if (strcmp(object->method, "DatabaseReference#update") == 0) {
 
@@ -685,7 +868,42 @@ static int on_receive_database(
 
   } else if (strcmp(object->method, "DatabaseReference#runTransaction") == 0) {
 
-    // TODO
+    auto key = get_variant(args, "transactionKey").value_or(firebase::Variant::Null());
+    auto timeout = get_int(args, "transactionTimeout");
+    if (!timeout) {
+      return error(handle, "transactionTimeout argument is required");
+    }
+    auto transaction = new TransactionHandler(
+        channel, handle, key, *timeout);
+    auto reference = get_reference(database, args);
+    auto future = reference.RunTransaction([](
+        firebase::database::MutableData* data, void* context) {
+      auto self = static_cast<TransactionHandler*>(context);
+      return self->OnCallback(data);
+    }, transaction);
+    future.OnCompletion([handle, key] (
+        const firebase::Future<firebase::database::DataSnapshot>& result) {
+      fprintf(stderr, "[%d] runTransaction.OnCompletion(result=%d)\n", gettid(), result.error());
+      auto valueMap = std::unique_ptr<ValueMap>(new ValueMap());
+      valueMap->add(val("transactionKey"), val(key));
+      auto committed = result.error() == firebase::database::kErrorNone;
+      if (!committed) {
+        auto errorMap = std::unique_ptr<ValueMap>(new ValueMap());
+        errorMap->add(val("code"), val(result.error()));
+        errorMap->add(val("message"), val(result.error_message()));
+        //errorMap.add(val("details"), val(result.details()));
+        valueMap->add(val("error"), std::move(errorMap));
+      }
+      valueMap->add(val("committed"), val(committed));
+      if (committed || result.error() == firebase::database::kErrorTransactionAbortedByUser) {
+        auto snapshotMap = std::unique_ptr<ValueMap>(new ValueMap());
+        snapshotMap->add(val("key"), val(result.result()->key()));
+        snapshotMap->add(val("value"), val(result.result()->value()));
+        valueMap->add(val("snapshot"), std::move(snapshotMap));
+      }
+      success(handle, std::move(valueMap));
+    });
+    return pending();
 
   } else if (strcmp(object->method, "OnDisconnect#set") == 0) {
 
