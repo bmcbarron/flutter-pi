@@ -1,25 +1,23 @@
 #include "value.h"
 
 std::unique_ptr<Value> val() {
-  return std::unique_ptr<Value>(new SimpleValue({.type = kStdNull}));
+  auto result = std_value{ .type = kStdNull };
+  return std::make_unique<SimpleValue>(result);
 }
 
 std::unique_ptr<Value> val(bool value) {
-  return std::unique_ptr<Value>(new SimpleValue({.type = value ? kStdTrue : kStdFalse}));
+  auto result = std_value{ .type = value ? kStdTrue : kStdFalse };
+  return std::make_unique<SimpleValue>(result);
 }
 
 std::unique_ptr<Value> val(int value) {
-  auto result = std_value{
-      .type = kStdInt32,
-  };
+  auto result = std_value{ .type = kStdInt32 };
   result.int32_value = value;
   return std::make_unique<SimpleValue>(result);
 }
 
 std::unique_ptr<Value> val(int64_t value) {
-  auto result = std_value{
-      .type = kStdInt64,
-  };
+  auto result = std_value{ .type = kStdInt64 };
   result.int64_value = value;
   return std::make_unique<SimpleValue>(result);
 }
@@ -29,9 +27,7 @@ std::unique_ptr<Value> val(uint64_t value) {
 }
 
 std::unique_ptr<Value> val(double value) {
-  auto result = std_value{
-      .type = kStdFloat64,
-  };
+  auto result = std_value{ .type = kStdFloat64 };
   result.float64_value = value;
   return std::make_unique<SimpleValue>(result);
 }

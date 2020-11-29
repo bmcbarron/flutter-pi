@@ -14,7 +14,9 @@ public:
   Module(std::string channel) : channel(channel) {}
   virtual ~Module() {}
 
-  virtual int OnMessage(platch_obj *object, FlutterPlatformMessageResponseHandle *handle) = 0;
+  virtual int OnMessage(platch_obj *object, FlutterPlatformMessageResponseHandle *handle) {
+    return not_implemented(handle);
+  }
 };
 
 #endif
