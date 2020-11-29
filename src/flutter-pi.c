@@ -54,10 +54,6 @@
 #include <plugins/text_input.h>
 #include <plugins/raw_keyboard.h>
 
-long gettid() {
-	return syscall(SYS_gettid);
-}
-
 const char const* usage ="\
 flutter-pi - run flutter apps on your Raspberry Pi.\n\
 \n\
@@ -730,19 +726,19 @@ static int on_send_platform_message(
 	struct platform_message *msg = userdata;
 	FlutterEngineResult result = kSuccess;
 	if (msg->is_response) {
-		fprintf(stderr, "FlutterEngineSendPlatformMessageResponse\n");
+		// fprintf(stderr, "FlutterEngineSendPlatformMessageResponse\n");
 		result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessageResponse(flutterpi.flutter.engine, msg->target_handle, msg->message, msg->message_size);
 	} else {
   	FlutterPlatformMessageResponseHandle *response_handle = NULL;
 		if (msg->on_response) {
-			fprintf(stderr, "FlutterPlatformMessageCreateResponseHandle on_response(%x)\n", msg->on_response_data);
+			// fprintf(stderr, "FlutterPlatformMessageCreateResponseHandle on_response(%x)\n", msg->on_response_data);
 			result = flutterpi.flutter.libflutter_engine.FlutterPlatformMessageCreateResponseHandle(flutterpi.flutter.engine, msg->on_response, msg->on_response_data, &response_handle);
 			if (result != kSuccess) {
 				fprintf(stderr, "[flutter-pi] Error create platform message response handle. FlutterPlatformMessageCreateResponseHandle: %s\n", FLUTTER_RESULT_TO_STRING(result));
 			}
 		}
 		if (result == kSuccess) {
-			fprintf(stderr, "FlutterEngineSendPlatformMessage\n");
+			// fprintf(stderr, "FlutterEngineSendPlatformMessage\n");
 			result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessage(
 				flutterpi.flutter.engine,
 				&(FlutterPlatformMessage) {
@@ -755,7 +751,7 @@ static int on_send_platform_message(
 			);
 		}
 		if (msg->on_response) {
-			fprintf(stderr, "FlutterPlatformMessageReleaseResponseHandle\n");
+			// fprintf(stderr, "FlutterPlatformMessageReleaseResponseHandle\n");
 			FlutterEngineResult result2 = flutterpi.flutter.libflutter_engine.FlutterPlatformMessageReleaseResponseHandle(flutterpi.flutter.engine, response_handle);
 			if (result2 != kSuccess) {
 				fprintf(stderr, "[flutter-pi] Error releasing platform message response handle. FlutterPlatformMessageReleaseResponseHandle: %s\n", FLUTTER_RESULT_TO_STRING(result2));

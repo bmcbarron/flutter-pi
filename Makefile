@@ -1,6 +1,7 @@
 COMMON_CFLAGS = \
   -I./include $(shell pkg-config --cflags gbm libdrm glesv2 egl libsystemd libinput libudev xkbcommon) \
   -I../firebase-cpp-sdk/app/src/include \
+  -I../firebase-cpp-sdk/auth/src/include \
   -I../firebase-cpp-sdk/database/src/include \
 	-DBUILD_TEXT_INPUT_PLUGIN \
 	-DBUILD_TEST_PLUGIN \
@@ -22,62 +23,57 @@ REAL_CXXFLAGS = $(CXXFLAGS) $(COMMON_CFLAGS) -std=gnu++17
 
 REAL_LDFLAGS = \
   -L../firebase-cpp-sdk/desktop_build/database -lfirebase_database \
+  -L../firebase-cpp-sdk/desktop_build/auth -lfirebase_auth \
   -L../firebase-cpp-sdk/desktop_build/app -lfirebase_app \
+  -L../firebase-cpp-sdk/desktop_build/app/rest -lfirebase_rest_lib \
   -L../firebase-cpp-sdk/desktop_build/external/src/flatbuffers-build -lflatbuffers \
   -L../firebase-cpp-sdk/desktop_build/external/src/zlib-build -lz \
   -L../firebase-cpp-sdk/desktop_build -llibuWS \
 	-L../firebase-cpp-sdk/desktop_build/external/src/firestore-build/external/src/leveldb-build -lleveldb \
-	$(shell pkg-config --libs gbm libdrm glesv2 egl libsystemd libinput libudev xkbcommon) \
+	$(shell pkg-config --libs egl gbm glesv2 glib-2.0 libdrm libinput libsystemd libudev xkbcommon) \
+	-lcurl \
 	-lrt \
 	-lpthread \
 	-ldl \
 	-lm \
 	-lssl \
+	-lsecret-1 \
 	-lcrypto \
 	-latomic \
 	-rdynamic \
 	-fsanitize=address \
 	$(LDFLAGS)
 
-SOURCES = src/flutter-pi.c \
-	src/platformchannel.c \
-	src/pluginregistry.c \
-	src/texture_registry.c \
-	src/compositor.c \
-	src/modesetting.c \
-	src/collection.c \
-	src/cursor.c \
-	src/keyboard.c \
-	src/plugins/services.c \
-	src/plugins/testplugin.c \
-	src/plugins/text_input.c \
-	src/plugins/raw_keyboard.c \
-	src/plugins/omxplayer_video_player.c
-
-CXX_SOURCES =	src/plugins/firebase.cpp
-
-EXTRA_DEPS = include/jsmn.h Makefile
+SOURCES = $(shell find src/ -type f -name '*.c')
+CXX_SOURCES = $(shell find src/ -type f -name '*.cpp')
 
 CC = /usr/bin/clang-9
 CXX = /usr/bin/clang++-9
+LD = /usr/bin/clang++-9
 
 OBJECTS = $(SOURCES:src/%.c=out/obj/%.o) $(CXX_SOURCES:src/%.cpp=out/obj/%.o)
-HEADERS = $(SOURCES:src/%.c=include/%.h) $(CXX_SOURCES:src/%.cpp=include/%.h)
 
 all: out/flutter-pi
 
-out/obj/%.o: src/%.c include/%.h $(EXTRA_DEPS)
-	@mkdir -p $(@D)
-	$(CC) -c $(REAL_CFLAGS) $< -o $@
+foo:
+	@echo $(SOURCES)
+	@echo $(CXX_SOURCES)
+	@echo $(OBJECTS)
 
-out/obj/%.o: src/%.cpp include/%.h $(EXTRA_DEPS)
+out/obj/%.o: src/%.c
 	@mkdir -p $(@D)
-	$(CXX) -c $(REAL_CXXFLAGS) $< -o $@
+	$(CC) -c $(REAL_CFLAGS) -MD $< -o $@
 
-out/flutter-pi: $(OBJECTS) $(HEADERS)
+out/obj/%.o: src/%.cpp
 	@mkdir -p $(@D)
-	$(CXX) $(OBJECTS) $(REAL_LDFLAGS) -o out/flutter-pi
+	$(CXX) -c $(REAL_CXXFLAGS) -MD $< -o $@
+
+out/flutter-pi: $(OBJECTS)
+	@mkdir -p $(@D)
+	$(LD) $(OBJECTS) $(REAL_LDFLAGS) -o out/flutter-pi
 
 clean:
 	@mkdir -p out
 	rm -rf $(OBJECTS) out/flutter-pi out/obj/*
+
+-include $(OBJECTS:%.o=%.d)
