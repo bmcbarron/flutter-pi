@@ -135,27 +135,7 @@ int AuthModule::OnMessage(platch_obj *object, FlutterPlatformMessageResponseHand
 
     return success(handle);
 
-  } else if (strcmp(object->method, "Auth#signInAnonymously") == 0) {
-
-    auto auth = get_auth(args);
-    auto future = auth->SignInAnonymouslyLastResult();
-    if (future.status() == firebase::kFutureStatusInvalid ||
-        (future.status() == firebase::kFutureStatusComplete &&
-         future.error() != firebase::auth::kAuthErrorNone)) {
-      future = auth->SignInAnonymously();
-    }
-    future.OnCompletion([] (
-        const firebase::Future<firebase::auth::User*>& result, void* userData) {
-      auto handle = static_cast<FlutterPlatformMessageResponseHandle *>(userData);
-      if (result.error() == firebase::auth::kAuthErrorNone) {
-        success(handle, parseAuthResult(*result.result()));
-      } else {
-        // TODO: Test failure by disabling anonymous login.
-        auto authError = static_cast<firebase::auth::AuthError>(result.error());
-        error(handle, std::to_string(authError), result.error_message());
-      }
-    }, handle);
-    return pending();
+  } else {
 
   // case "Auth#registerChangeListeners":
   // case "Auth#applyActionCode":
@@ -237,5 +217,30 @@ int AuthModule::OnMessage(platch_obj *object, FlutterPlatformMessageResponseHand
 
   }
 
-  return not_implemented(handle);
+  return Module::OnMessage(object, handle);
+}
+
+
+int AuthModule::SignInAnonymously(std_value *args, FlutterPlatformMessageResponseHandle *handle) {
+  auto auth = get_auth(args);
+  auto future = auth->SignInAnonymouslyLastResult();
+  fprintf(stderr, "SignInAnonymouslyLastResult status=%d error=%d\n",
+          future.status(), future.error());
+  if (future.status() == firebase::kFutureStatusInvalid ||
+      (future.status() == firebase::kFutureStatusComplete &&
+        future.error() != firebase::auth::kAuthErrorNone)) {
+    future = auth->SignInAnonymously();
+  }
+  future.OnCompletion([] (
+      const firebase::Future<firebase::auth::User*>& result, void* userData) {
+    auto handle = static_cast<FlutterPlatformMessageResponseHandle *>(userData);
+    if (result.error() == firebase::auth::kAuthErrorNone) {
+      success(handle, parseAuthResult(*result.result()));
+    } else {
+      // TODO: Test failure by disabling anonymous login.
+      auto authError = static_cast<firebase::auth::AuthError>(result.error());
+      error(handle, std::to_string(authError), result.error_message());
+    }
+  }, handle);
+  return pending();
 }

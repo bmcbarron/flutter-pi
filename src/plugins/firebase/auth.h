@@ -9,9 +9,13 @@ firebase::auth::Auth* get_auth(std_value* args);
 
 class AuthModule : public Module {
 public:
-  AuthModule() : Module("plugins.flutter.io/firebase_auth") {}
+  AuthModule() : Module("plugins.flutter.io/firebase_auth") {
+    Register("Auth#signInAnonymously", &AuthModule::SignInAnonymously);
+  }
   
   virtual int OnMessage(platch_obj *object, FlutterPlatformMessageResponseHandle *handle);
+
+  virtual int SignInAnonymously(std_value *args, FlutterPlatformMessageResponseHandle *handle);
 };
 
 #endif
