@@ -9,9 +9,10 @@ firebase::App* get_app(std_value* args);
 
 class CoreModule : public Module {
 public:
-  CoreModule() : Module("plugins.flutter.io/firebase_core") {}
+  CoreModule();
 
-  virtual int OnMessage(platch_obj *object, FlutterPlatformMessageResponseHandle *handle);
+private:
+  virtual int initializeCore(std_value *args, FlutterPlatformMessageResponseHandle *handle);
 };
 
 #endif

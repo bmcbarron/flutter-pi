@@ -8,7 +8,7 @@ int Module::OnMessage(platch_obj *object, FlutterPlatformMessageResponseHandle *
     return not_implemented(handle);
   }
   auto *args = &(object->std_arg);
-  if (args->type != kStdMap) {
+  if (args->type != kStdMap && args->type != kStdNull) {
     return error_message(handle, "arguments isn't a map");
   }
   return std::invoke(h->second, this, args, handle);

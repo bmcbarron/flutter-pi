@@ -1,5 +1,5 @@
 COMMON_CFLAGS = \
-  -I./include $(shell pkg-config --cflags gbm libdrm glesv2 egl libsystemd libinput libudev xkbcommon) \
+  -I./include $(shell pkg-config --cflags gbm libdrm glesv2 egl libsystemd libinput libudev xkbcommon libsecret-1 glib-2.0) \
   -I../firebase-cpp-sdk/app/src/include \
   -I../firebase-cpp-sdk/auth/src/include \
   -I../firebase-cpp-sdk/database/src/include \
