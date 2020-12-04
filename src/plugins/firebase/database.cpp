@@ -299,7 +299,7 @@ int DatabaseModule::OnMessage(platch_obj *object, FlutterPlatformMessageResponse
       auto self = static_cast<TransactionHandler*>(context);
       return self->OnCallback(data);
     }, transaction);
-    future.OnCompletion([handle, key] (
+    future.OnCompletion([handle, key, transaction] (
         const firebase::Future<firebase::database::DataSnapshot>& result) {
       fprintf(stderr, "[%d] runTransaction.OnCompletion(result=%d)\n", gettid(), result.error());
       auto valueMap = std::make_unique<ValueMap>();
@@ -319,6 +319,7 @@ int DatabaseModule::OnMessage(platch_obj *object, FlutterPlatformMessageResponse
         snapshotMap->add(val("value"), val(result.result()->value()));
         valueMap->add(val("snapshot"), std::move(snapshotMap));
       }
+      delete transaction;
       success(handle, std::move(valueMap));
     });
     return pending();

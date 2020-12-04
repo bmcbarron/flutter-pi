@@ -2195,7 +2195,7 @@ static int on_libinput_ready(sd_event_source *s, int fd, uint32_t revents, void 
 				&codepoint
 			);
 
-			printf("[key event] keycode: 0x%04X, type: %s, keysym: 0x%08X, codepoint: 0x%08X\n", evdev_keycode, key_state? "down" : " up ", keysym, codepoint);
+			// printf("[key event] keycode: 0x%04X, type: %s, keysym: 0x%08X, codepoint: 0x%08X\n", evdev_keycode, key_state? "down" : " up ", keysym, codepoint);
 
 			plain_codepoint = keyboard_state_get_plain_codepoint(data->keyboard_state, evdev_keycode, 1);
 			

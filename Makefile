@@ -1,16 +1,18 @@
+DEP_LIBS = egl gbm glesv2 glib-2.0 libdrm libinput libsystemd libudev xkbcommon libsecret-1
+
 COMMON_CFLAGS = \
-  -I./include $(shell pkg-config --cflags gbm libdrm glesv2 egl libsystemd libinput libudev xkbcommon libsecret-1 glib-2.0) \
+  -I./include $(shell pkg-config --cflags $(DEP_LIBS)) \
   -I../firebase-cpp-sdk/app/src/include \
   -I../firebase-cpp-sdk/auth/src/include \
   -I../firebase-cpp-sdk/database/src/include \
 	-DBUILD_TEXT_INPUT_PLUGIN \
 	-DBUILD_TEST_PLUGIN \
 	-DBUILD_OMXPLAYER_VIDEO_PLAYER_PLUGIN \
-	-O0 \
-	-g \
 	-w \
 	-Wno-psabi \
 	-Wif-not-aligned \
+	-O0 \
+	-gfull \
 	-fsanitize=address \
 	-fno-omit-frame-pointer \
 	-fno-optimize-sibling-calls
@@ -30,7 +32,7 @@ REAL_LDFLAGS = \
   -L../firebase-cpp-sdk/desktop_build/external/src/zlib-build -lz \
   -L../firebase-cpp-sdk/desktop_build -llibuWS \
 	-L../firebase-cpp-sdk/desktop_build/external/src/firestore-build/external/src/leveldb-build -lleveldb \
-	$(shell pkg-config --libs egl gbm glesv2 glib-2.0 libdrm libinput libsystemd libudev xkbcommon) \
+	$(shell pkg-config --libs $(DEP_LIBS)) \
 	-lcurl \
 	-lrt \
 	-lpthread \
@@ -41,6 +43,7 @@ REAL_LDFLAGS = \
 	-lcrypto \
 	-latomic \
 	-rdynamic \
+	-gfull \
 	-fsanitize=address \
 	$(LDFLAGS)
 

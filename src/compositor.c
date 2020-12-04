@@ -957,7 +957,7 @@ static bool on_present_layers(
 	compositor = userdata;
 	drmdev = compositor->drmdev;
 	schedule_fake_page_flip_event = compositor->do_blocking_atomic_commits;
-	use_atomic_modesetting = drmdev->supports_atomic_modesetting;
+	use_atomic_modesetting = false; // drmdev->supports_atomic_modesetting;
 
 	if (use_atomic_modesetting) {
 		drmdev_new_atomic_req(compositor->drmdev, &req);
