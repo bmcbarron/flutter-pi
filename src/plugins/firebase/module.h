@@ -20,6 +20,9 @@ enum InvokeResult {
   INVOKE_FAILED,
 };
 
+const bool info = false;
+const bool verbose = false;
+
 void invoke(std::string channel, std::string method,
             std::unique_ptr<Value> arguments, bool print_response = false);
 InvokeResult invoke_sync(std::string channel, std::string method,

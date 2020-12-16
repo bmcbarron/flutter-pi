@@ -715,8 +715,6 @@ static void on_post_flutter_task(
 	}
 }
 
-const verbose = false;
-
 /// platform messages
 static int on_send_platform_message(
 	void *userdata
@@ -725,12 +723,12 @@ static int on_send_platform_message(
 	struct platform_message *msg = userdata;
 	FlutterEngineResult result = kSuccess;
 	if (msg->is_response) {
-          if (verbose)
+          if (pi_verbose)
             fprintf(stderr, "[%d] FlutterEngineSendPlatformMessageResponse(handle=%08x) before\n",
                     gettid(), msg->target_handle);
           result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessageResponse(
               flutterpi.flutter.engine, msg->target_handle, msg->message, msg->message_size);
-          if (verbose)
+          if (pi_verbose)
             fprintf(stderr, "[%d] FlutterEngineSendPlatformMessageResponse(handle=%08x) after\n",
                     gettid(), msg->target_handle);
         } else {
@@ -743,7 +741,7 @@ static int on_send_platform_message(
 			}
 		}
 		if (result == kSuccess) {
-                  if (verbose)
+                  if (pi_verbose)
                     fprintf(stderr, "[%d] FlutterEngineSendPlatformMessage(handle=%08x) before\n",
                             gettid(), response_handle);
                   result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessage(
@@ -753,7 +751,7 @@ static int on_send_platform_message(
                                                 .message = msg->message,
                                                 .message_size = msg->message_size,
                                                 .response_handle = response_handle});
-                  if (verbose)
+                  if (pi_verbose)
                     fprintf(stderr, "[%d] FlutterEngineSendPlatformMessage(handle=%08x) after\n",
                             gettid(), response_handle);
                 }

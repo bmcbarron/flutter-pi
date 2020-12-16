@@ -7,6 +7,8 @@
 
 #include <platformchannel.h>
 
+extern bool pi_verbose;
+
 #define STREQ(a, b) (strcmp(a, b) == 0)
 
 /// Callback for Initialization or Deinitialization.

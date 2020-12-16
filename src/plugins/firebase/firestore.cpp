@@ -525,7 +525,9 @@ private:
   // Called from an arbitrary thread.
   firebase::firestore::Error OnTransaction(firebase::firestore::Transaction &transaction,
                                            std::string &error_message) {
-    fprintf(stderr, "[%d] TransactionHandler.OnTransaction(%d)\n", gettid(), transactionId);
+
+    if (verbose)
+      fprintf(stderr, "[%d] TransactionHandler.OnTransaction(%d)\n", gettid(), transactionId);
     auto arguments = std::make_unique<ValueMap>();
     arguments->set("transactionId", transactionId);
     arguments->set("appName", get_app_name(instance->app()));
@@ -592,10 +594,13 @@ private:
 
   static void OnCompletion(TransactionHandler *handler, const firebase::Future<void> &result) {
     // auto unique = std::unique_ptr<TransactionHandler>(handler);
-    fprintf(stderr, "[%d] TransactionHandler.OnCompletion(%d)\n", gettid(), handler->transactionId);
+    if (verbose)
+      fprintf(stderr, "[%d] TransactionHandler.OnCompletion(%d)\n", gettid(),
+              handler->transactionId);
     success(handler->response_handle);
-    fprintf(stderr, "[%d] TransactionHandler.OnCompletion(%d) done\n", gettid(),
-            handler->transactionId);
+    if (verbose)
+      fprintf(stderr, "[%d] TransactionHandler.OnCompletion(%d) done\n", gettid(),
+              handler->transactionId);
   }
 
   FlutterPlatformMessageResponseHandle *response_handle;
@@ -642,7 +647,9 @@ int FirestoreModule::queryAddSnapshotListener(
       metadataChanges,
       [this, handle](const firebase::firestore::QuerySnapshot &snapshot,
                      firebase::firestore::Error error, const std::string &errorMessage) {
-        fprintf(stderr, "Got snapshot: error: %d errorMessage: %s\n", error, errorMessage.c_str());
+        if (verbose)
+          fprintf(stderr, "Got snapshot: error: %d errorMessage: %s\n", error,
+                  errorMessage.c_str());
         auto eventMap = std::make_unique<ValueMap>();
 
         eventMap->set("handle", handle);
@@ -679,26 +686,28 @@ int FirestoreModule::documentAddSnapshotListener(
                              : firebase::firestore::MetadataChanges::kExclude;
 
   auto document = get_docref(args);
-  document.AddSnapshotListener(
-      metadataChanges,
-      [this, handle](const firebase::firestore::DocumentSnapshot &snapshot,
-                     firebase::firestore::Error error, const std::string &errorMessage) {
-        fprintf(stderr, "Got snapshot: error: %d errorMessage: %s\n", error, errorMessage.c_str());
-        auto eventMap = std::make_unique<ValueMap>();
+  document.AddSnapshotListener(metadataChanges,
+                               [this, handle](const firebase::firestore::DocumentSnapshot &snapshot,
+                                              firebase::firestore::Error error,
+                                              const std::string &errorMessage) {
+                                 if (verbose)
+                                   fprintf(stderr, "Got snapshot: error: %d errorMessage: %s\n",
+                                           error, errorMessage.c_str());
+                                 auto eventMap = std::make_unique<ValueMap>();
 
-        eventMap->set("handle", handle);
+                                 eventMap->set("handle", handle);
 
-        if (error != firebase::firestore::Error::kErrorOk) {
-          auto exceptionMap = std::make_unique<ValueMap>();
-          exceptionMap->set("code", error);
-          exceptionMap->set("message", errorMessage);
-          eventMap->set("error", std::move(exceptionMap));
-          invoke(channel, "DocumentSnapshot#error", std::move(eventMap));
-        } else {
-          eventMap->set("snapshot", &snapshot);
-          invoke(channel, "DocumentSnapshot#event", std::move(eventMap));
-        }
-      });
+                                 if (error != firebase::firestore::Error::kErrorOk) {
+                                   auto exceptionMap = std::make_unique<ValueMap>();
+                                   exceptionMap->set("code", error);
+                                   exceptionMap->set("message", errorMessage);
+                                   eventMap->set("error", std::move(exceptionMap));
+                                   invoke(channel, "DocumentSnapshot#error", std::move(eventMap));
+                                 } else {
+                                   eventMap->set("snapshot", &snapshot);
+                                   invoke(channel, "DocumentSnapshot#event", std::move(eventMap));
+                                 }
+                               });
 
   return success(response_handle);
 }

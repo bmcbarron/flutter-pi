@@ -32,6 +32,8 @@
 #endif
 #include <plugins/firebase.h>
 
+bool pi_verbose = false;
+
 struct platch_obj_cb_data {
 	char *channel;
 	enum platch_codec codec;
@@ -130,12 +132,13 @@ int plugin_registry_on_platform_message(FlutterPlatformMessage *message) {
 	if (ok != 0) {
 		return ok;
 	}
-
-        fprintf(stderr, "[%d] plugin_registry_on_platform_message(handle=%08x) before\n", gettid(),
-                message->response_handle);
+        if (pi_verbose)
+          fprintf(stderr, "[%d] plugin_registry_on_platform_message(handle=%08x) before\n",
+                  gettid(), message->response_handle);
         ok = data_copy.callback((char*) message->channel, &object, (FlutterPlatformMessageResponseHandle*) message->response_handle); //, data->userdata);
-        fprintf(stderr, "[%d] plugin_registry_on_platform_message(handle=%08x) after\n", gettid(),
-                message->response_handle);
+        if (pi_verbose)
+          fprintf(stderr, "[%d] plugin_registry_on_platform_message(handle=%08x) after\n", gettid(),
+                  message->response_handle);
         if (ok != 0) {
 		platch_free_obj(&object);
 		return ok;
