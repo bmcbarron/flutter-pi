@@ -23,8 +23,8 @@ int on_receive_callback(char *channel, platch_obj *object,
   return m->second->OnMessage(object, handle);
 }
 
-int on_decode_type_std(enum std_value_type type, uint8_t **pbuffer, size_t *premaining,
-                       struct std_value *value_out);
+int on_decode_firestore_type_std(enum std_value_type type, uint8_t **pbuffer, size_t *premaining,
+                                 struct std_value *value_out);
 
 int read_std_map(uint8_t **pbuffer, size_t *premaining, struct std_value *value_out,
                  std::initializer_list<const char *> keys, const char *field_value_type = nullptr) {
@@ -51,8 +51,8 @@ int read_std_map(uint8_t **pbuffer, size_t *premaining, struct std_value *value_
   for (int i = startIndex; i < size; i++) {
     value_out->keys[i] = {type : kStdString, string_value : strdup(*nextKey++)};
 
-    int ok =
-        platch_decode_value_std(pbuffer, premaining, &(value_out->values[i]), on_decode_type_std);
+    int ok = platch_decode_value_std(pbuffer, premaining, &(value_out->values[i]),
+                                     on_decode_firestore_type_std);
     if (ok != 0)
       return ok;
   }
@@ -70,32 +70,33 @@ int read_std_list(uint8_t **pbuffer, size_t *premaining, struct std_value *value
   value_out->list = static_cast<std_value *>(calloc(size, sizeof(struct std_value)));
 
   for (int i = 0; i < size; i++) {
-    ok = platch_decode_value_std(pbuffer, premaining, &value_out->list[i], on_decode_type_std);
+    ok = platch_decode_value_std(pbuffer, premaining, &value_out->list[i],
+                                 on_decode_firestore_type_std);
     if (ok != 0)
       return ok;
   }
   return 0;
 }
 
-int on_decode_type_std(enum std_value_type type, uint8_t **pbuffer, size_t *premaining,
-                       struct std_value *value_out) {
+int on_decode_firestore_type_std(enum std_value_type type, uint8_t **pbuffer, size_t *premaining,
+                                 struct std_value *value_out) {
   switch (type) {
   case 128: // DateTime
-    fprintf(stderr, "on_decode_type_str(%d) = DateTime\n", type);
+    fprintf(stderr, "on_decode_firestore_type_std(%d) = DateTime\n", type);
     return EBADMSG;
   case 129: // GeoPoint
-    fprintf(stderr, "on_decode_type_str(%d) = GeoPoint\n", type);
+    fprintf(stderr, "on_decode_firestore_type_std(%d) = GeoPoint\n", type);
     return EBADMSG;
   case 130: // DocumentReference
     return read_std_map(pbuffer, premaining, value_out, {"firestore", "path"});
   case 131: // Blob
-    fprintf(stderr, "on_decode_type_str(%d) = Blob\n", type);
+    fprintf(stderr, "on_decode_firestore_type_std(%d) = Blob\n", type);
     return EBADMSG;
   case 132: // ArrayUnion
-    fprintf(stderr, "on_decode_type_str(%d) = ArrayUnion\n", type);
+    fprintf(stderr, "on_decode_firestore_type_std(%d) = ArrayUnion\n", type);
     return EBADMSG;
   case 133: // ArrayRemove
-    fprintf(stderr, "on_decode_type_str(%d) = ArrayRemove\n", type);
+    fprintf(stderr, "on_decode_firestore_type_std(%d) = ArrayRemove\n", type);
     return EBADMSG;
   case 134: // Delete
     return read_std_map(pbuffer, premaining, value_out, {}, "Delete");
@@ -104,33 +105,33 @@ int on_decode_type_std(enum std_value_type type, uint8_t **pbuffer, size_t *prem
   case 136: // Timestamp
     return read_std_map(pbuffer, premaining, value_out, {"seconds", "nanos"}, "Timestamp");
   case 137: // IncrementDouble
-    fprintf(stderr, "on_decode_type_str(%d) = IncrementDouble\n", type);
+    fprintf(stderr, "on_decode_firestore_type_std(%d) = IncrementDouble\n", type);
     return EBADMSG;
   case 138: // IncrementInteger
-    fprintf(stderr, "on_decode_type_str(%d) = IncrementInteger\n", type);
+    fprintf(stderr, "on_decode_firestore_type_std(%d) = IncrementInteger\n", type);
     return EBADMSG;
   case 139: // DocumentId
-    fprintf(stderr, "on_decode_type_str(%d) = DocumentId\n", type);
+    fprintf(stderr, "on_decode_firestore_type_std(%d) = DocumentId\n", type);
     return EBADMSG;
   case 140: // FieldPath
     return read_std_list(pbuffer, premaining, value_out);
   case 141: // NaN
-    fprintf(stderr, "on_decode_type_str(%d) = NaN\n", type);
+    fprintf(stderr, "on_decode_firestore_type_std(%d) = NaN\n", type);
     return EBADMSG;
   case 142: // Infinity
-    fprintf(stderr, "on_decode_type_str(%d) = Infinity\n", type);
+    fprintf(stderr, "on_decode_firestore_type_std(%d) = Infinity\n", type);
     return EBADMSG;
   case 143: // NegativeInfinity
-    fprintf(stderr, "on_decode_type_str(%d) = NegativeInfinity\n", type);
+    fprintf(stderr, "on_decode_firestore_type_std(%d) = NegativeInfinity\n", type);
     return EBADMSG;
   case 144: // FirestoreInstance
     return read_std_map(pbuffer, premaining, value_out, {"appName", "settings"});
   case 145: // FirestoreQuery
-    return platch_decode_value_std(pbuffer, premaining, value_out, on_decode_type_std);
+    return platch_decode_value_std(pbuffer, premaining, value_out, on_decode_firestore_type_std);
   case 146: // FirestoreSettings
-    return platch_decode_value_std(pbuffer, premaining, value_out, on_decode_type_std);
+    return platch_decode_value_std(pbuffer, premaining, value_out, on_decode_firestore_type_std);
   }
-  fprintf(stderr, "on_decode_type_str(%d)\n", type);
+  fprintf(stderr, "on_decode_firestore_type_std(%d)\n", type);
   return EBADMSG;
 }
 
@@ -157,7 +158,7 @@ int firebase_init() {
       firebase_deinit();
       return result;
     }
-    plugin_registry_extend_std_decode(m->channel.c_str(), on_decode_type_std);
+    plugin_registry_extend_std_decode(m->channel.c_str(), on_decode_firestore_type_std);
     fprintf(stderr, "[firebase-plugin] Registered channel '%s'.\n", m->channel.c_str());
     channel_map.emplace(m->channel, std::move(m));
   }

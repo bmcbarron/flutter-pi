@@ -253,21 +253,17 @@ int platch_encode(struct platch_obj *object, uint8_t **buffer_out, size_t *size_
 ///   Then, on_response is called with the decoded ChannelObject and the userdata as an argument.
 ///   It's possible that flutter won't respond to your platform message, like when sending events via an EventChannel.
 /// userdata can be NULL.
-int platch_send(char *channel,
-                struct platch_obj *object,
-                enum platch_codec response_codec,
-                platch_msg_resp_callback on_response,
-                void *userdata);
+int platch_send(char *channel, struct platch_obj *object, enum platch_codec response_codec,
+                platch_msg_resp_callback on_response, void *userdata,
+                platch_decode_type_std extend_std_decode);
 
 /// Encodes a StandardMethodCodec method call as a platform message and sends it to flutter
 /// on channel `channel`. This is just a wrapper around PlatformChannel_send
 /// that builds the ChannelObject for you.
 /// The response_codec is kStandardMethodCallResponse. userdata can be NULL.
-int platch_call_std(char *channel,
-                    char *method,
-                    struct std_value *argument,
-                    platch_msg_resp_callback on_response,
-                    void *userdata);
+int platch_call_std(char *channel, char *method, struct std_value *argument,
+                    platch_msg_resp_callback on_response, void *userdata,
+                    platch_decode_type_std extend_std_decode);
 
 /// Encodes the arguments as a JSON method call and sends it to flutter
 /// on channel [channel]. This is just a wrapper around platch_send

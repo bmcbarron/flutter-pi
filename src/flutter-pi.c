@@ -715,6 +715,8 @@ static void on_post_flutter_task(
 	}
 }
 
+const verbose = false;
+
 /// platform messages
 static int on_send_platform_message(
 	void *userdata
@@ -723,12 +725,14 @@ static int on_send_platform_message(
 	struct platform_message *msg = userdata;
 	FlutterEngineResult result = kSuccess;
 	if (msg->is_response) {
-          fprintf(stderr, "[%d] FlutterEngineSendPlatformMessageResponse(handle=%08x) before\n", gettid(),
-                  msg->target_handle);
+          if (verbose)
+            fprintf(stderr, "[%d] FlutterEngineSendPlatformMessageResponse(handle=%08x) before\n",
+                    gettid(), msg->target_handle);
           result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessageResponse(
               flutterpi.flutter.engine, msg->target_handle, msg->message, msg->message_size);
-          fprintf(stderr, "[%d] FlutterEngineSendPlatformMessageResponse(handle=%08x) after\n", gettid(),
-                  msg->target_handle);
+          if (verbose)
+            fprintf(stderr, "[%d] FlutterEngineSendPlatformMessageResponse(handle=%08x) after\n",
+                    gettid(), msg->target_handle);
         } else {
   	FlutterPlatformMessageResponseHandle *response_handle = NULL;
 		if (msg->on_response) {
@@ -739,8 +743,9 @@ static int on_send_platform_message(
 			}
 		}
 		if (result == kSuccess) {
-                  fprintf(stderr, "[%d] FlutterEngineSendPlatformMessage(handle=%08x) before\n",
-                          gettid(), response_handle);
+                  if (verbose)
+                    fprintf(stderr, "[%d] FlutterEngineSendPlatformMessage(handle=%08x) before\n",
+                            gettid(), response_handle);
                   result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessage(
                       flutterpi.flutter.engine,
                       &(FlutterPlatformMessage){.struct_size = sizeof(FlutterPlatformMessage),
@@ -748,9 +753,9 @@ static int on_send_platform_message(
                                                 .message = msg->message,
                                                 .message_size = msg->message_size,
                                                 .response_handle = response_handle});
-                                fprintf(stderr,
-                                "[%d] FlutterEngineSendPlatformMessage(handle=%08x) after\n",
-                                        gettid(), response_handle);
+                  if (verbose)
+                    fprintf(stderr, "[%d] FlutterEngineSendPlatformMessage(handle=%08x) after\n",
+                            gettid(), response_handle);
                 }
 		if (msg->on_response) {
 			// fprintf(stderr, "FlutterPlatformMessageReleaseResponseHandle\n");

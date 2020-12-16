@@ -483,13 +483,18 @@ class TransactionHandler {
 public:
   static int Get(FlutterPlatformMessageResponseHandle *response_handle, int transactionId,
                  const firebase::firestore::DocumentReference &document) {
+    firebase::firestore::DocumentSnapshot snapshot;
     firebase::firestore::Error error_code = firebase::firestore::kErrorNone;
     std::string error_message;
 
     MutexLocker lock(transactions_mutex);
     auto transaction = transactions.find(transactionId);
-    assert(transaction != transactions.end());
-    auto snapshot = transaction->second->Get(document, &error_code, &error_message);
+    if (transaction == transactions.end()) {
+      error_code = firebase::firestore::kErrorNotFound;
+      error_message = "Transaction not found for ID: " + std::to_string(transactionId);
+    } else {
+      snapshot = transaction->second->Get(document, &error_code, &error_message);
+    }
     lock.Unlock();
 
     if (error_code != firebase::firestore::kErrorNone) {

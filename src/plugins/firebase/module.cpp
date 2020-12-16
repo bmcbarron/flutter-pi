@@ -5,6 +5,10 @@
 
 #include <functional>
 
+extern "C" {
+#include "plugins/firebase.h"
+}
+
 #include "util.h"
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -101,6 +105,8 @@ int on_invoke_response(platch_obj *object, void *userdata) {
   return 0;
 }
 
+const bool verbose = false;
+
 void invoke(std::string channel, std::string method, std::unique_ptr<Value> arguments,
             bool print_response) {
   fprintf(stderr, kAsyncCommandBreak "[%d] %s\n<<< %s ", gettid(), channel.c_str(), method.c_str());
@@ -115,10 +121,14 @@ void invoke(std::string channel, std::string method, std::unique_ptr<Value> argu
       method : method,
     };
   }
-  fprintf(stderr, "before invoke platch\n");
+  if (verbose)
+
+    fprintf(stderr, "before invoke platch\n");
   platch_call_std(const_cast<char *>(channel.c_str()), const_cast<char *>(method.c_str()),
-                  &builtArgs, callback, userdata);
-  fprintf(stderr, "after invoke platch\n");
+                  &builtArgs, callback, userdata, on_decode_firestore_type_std);
+  if (verbose)
+
+    fprintf(stderr, "after invoke platch\n");
   fprintf(stderr, kAsyncCommandBreak);
 }
 
@@ -169,7 +179,8 @@ InvokeResult invoke_sync(std::string channel, std::string method, std::unique_pt
   auto invocation = new Invocation{false, false};
 
   auto ok = platch_call_std(const_cast<char *>(channel.c_str()), const_cast<char *>(method.c_str()),
-                            &builtArgs, on_invoke_sync_response, invocation);
+                            &builtArgs, on_invoke_sync_response, invocation,
+                            on_decode_firestore_type_std);
   if (ok != 0) {
     fprintf(stderr, "invoke_sync error: %d\n", ok);
     fprintf(stderr, kAsyncCommandBreak);

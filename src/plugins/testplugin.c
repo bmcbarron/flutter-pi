@@ -261,7 +261,7 @@ int send_std() {
         },
     };
 
-    platch_call_std(TESTPLUGIN_CHANNEL_STD, method, &argument, on_response_std, time);
+    platch_call_std(TESTPLUGIN_CHANNEL_STD, method, &argument, on_response_std, time, NULL);
     return 0;
 }
 
