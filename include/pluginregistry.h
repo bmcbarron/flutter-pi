@@ -43,7 +43,6 @@ struct flutterpi_plugin {
 	init_deinit_cb deinit;
 };
 
-
 int plugin_registry_init(void);
 
 int plugin_registry_on_platform_message(
@@ -59,6 +58,11 @@ int plugin_registry_set_receiver(
 	platch_obj_recv_callback callback
 );
 
+int plugin_registry_extend_std_decode(
+	const char *channel,
+	platch_decode_type_std callback
+);
+
 int plugin_registry_remove_receiver(
 	const char *channel
 );
@@ -68,5 +72,6 @@ bool plugin_registry_is_plugin_present(
 );
 
 int plugin_registry_deinit(void);
+
 
 #endif

@@ -36,6 +36,7 @@ struct platch_obj_cb_data {
 	char *channel;
 	enum platch_codec codec;
 	platch_obj_recv_callback callback;
+	platch_decode_type_std extend_std_decode;
 	void *userdata;
 };
 
@@ -125,14 +126,17 @@ int plugin_registry_on_platform_message(FlutterPlatformMessage *message) {
 	data_copy = *data;
 	cpset_unlock(&plugin_registry.platch_obj_cbs);
 
-	fprintf(stderr, "[%d] plugin_registry_on_platform_message (codec=%d, size=%d)\n", gettid(), data_copy.codec, message->message_size);
-	ok = platch_decode((uint8_t*) message->message, message->message_size, data_copy.codec, &object);
+        ok = platch_decode((uint8_t*) message->message, message->message_size, data_copy.codec, &object, data_copy.extend_std_decode);
 	if (ok != 0) {
 		return ok;
 	}
 
-	ok = data_copy.callback((char*) message->channel, &object, (FlutterPlatformMessageResponseHandle*) message->response_handle); //, data->userdata);
-	if (ok != 0) {
+        fprintf(stderr, "[%d] plugin_registry_on_platform_message(handle=%08x) before\n", gettid(),
+                message->response_handle);
+        ok = data_copy.callback((char*) message->channel, &object, (FlutterPlatformMessageResponseHandle*) message->response_handle); //, data->userdata);
+        fprintf(stderr, "[%d] plugin_registry_on_platform_message(handle=%08x) after\n", gettid(),
+                message->response_handle);
+        if (ok != 0) {
 		platch_free_obj(&object);
 		return ok;
 	}
@@ -178,6 +182,25 @@ int plugin_registry_set_receiver(
 
 	cpset_unlock(&plugin_registry.platch_obj_cbs);
 
+	return 0;
+}
+
+int plugin_registry_extend_std_decode(
+	const char *channel,
+	platch_decode_type_std callback
+) {
+  struct platch_obj_cb_data *data;
+
+	cpset_lock(&plugin_registry.platch_obj_cbs);
+
+	data = plugin_registry_get_cb_data_by_channel_locked(channel);
+	if (data == NULL) {
+		cpset_unlock(&plugin_registry.platch_obj_cbs);
+		return EINVAL;
+	}
+
+	data->extend_std_decode = callback;
+  cpset_unlock(&plugin_registry.platch_obj_cbs);
 	return 0;
 }
 

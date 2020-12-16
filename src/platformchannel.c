@@ -23,9 +23,13 @@ int platch_free_value_std(struct std_value *value) {
 	int ok;
 
 	switch (value->type) {
+    case kStdPreEncoded:
+      free(value->uint8array);
+      break;
 		case kStdString:
-			free(value->string_value);
-			break;
+    case kStdLargeInt:
+      free(value->string_value);
+      break;
 		case kStdList:
 			for (int i=0; i < value->size; i++) {
 				ok = platch_free_value_std(&(value->list[i]));
@@ -140,6 +144,13 @@ int platch_calc_value_size_std(struct std_value* value, size_t* size_out) {
 			_advance_size_bytes(&size, element_size, NULL);
 			_advance(&size, element_size, NULL);
 			break;
+    case kStdPreEncoded:
+      // Already added one for type byte above.
+			element_size = value->size - 1; 
+      // Size isn't used in this case.
+			// _advance_size_bytes(&size, element_size, NULL);
+			_advance(&size, element_size, NULL);
+			break;
 		case kStdInt32Array:
 			element_size = value->size;
 
@@ -208,6 +219,13 @@ int platch_write_value_to_buffer_std(struct std_value* value, uint8_t **pbuffer)
 	size_t size;
 	int ok;
 
+  if (value->type == kStdPreEncoded && value->size > 0) {
+    // This is pre-encoded, including the type byte.
+    memcpy(*pbuffer, value->uint8array, value->size);
+    _advance((uintptr_t*) pbuffer, value->size, NULL);
+    return 0;
+  }
+
 	_write8(pbuffer, value->type, NULL);
 
 	switch (value->type) {
@@ -228,10 +246,11 @@ int platch_write_value_to_buffer_std(struct std_value* value, uint8_t **pbuffer)
 		case kStdLargeInt:
 		case kStdString:
 		case kStdUInt8Array:
+    case kStdPreEncoded:
 			if ((value->type == kStdLargeInt) || (value->type == kStdString)) {
 				size = strlen(value->string_value);
 				byteArray = (uint8_t*) value->string_value;
-			} else if (value->type == kStdUInt8Array) {
+			} else if ((value->type == kStdUInt8Array) || (value->type == kStdPreEncoded)) {
 				size = value->size;
 				byteArray = value->uint8array;
 			}
@@ -432,7 +451,8 @@ int platch_write_value_to_buffer_json(struct json_value* value, uint8_t **pbuffe
 
 	return 0;
 }
-int platch_decode_value_std(uint8_t **pbuffer, size_t *premaining, struct std_value *value_out) {
+
+int platch_decode_value_std(uint8_t **pbuffer, size_t *premaining, struct std_value *value_out, platch_decode_type_std extend_decode) {
 	enum std_value_type type = 0;
 	int64_t *longArray = 0;
 	int32_t *intArray = 0;
@@ -494,15 +514,21 @@ int platch_decode_value_std(uint8_t **pbuffer, size_t *premaining, struct std_va
 			memcpy(value_out->string_value, *pbuffer, size);
 			_advance((uintptr_t*) pbuffer, size, premaining);
 
-    	//fprintf(stderr, " == %s\n", value_out->string_value);
+    	//fprintf(stderr, " == %s (len=%d)\n", value_out->string_value, size);
 			break;
 		case kStdUInt8Array:
+    case kStdPreEncoded:
 			ok = _readSize(pbuffer, &size, premaining);
 			if (ok != 0) return ok;
 			if (*premaining < size) return EBADMSG;
 
 			value_out->size = size;
-			value_out->uint8array = *pbuffer;
+      if (type == kStdPreEncoded) {
+        value_out->uint8array = calloc(size, sizeof(char));
+        memcpy(value_out->uint8array, pbuffer, size);
+      } else {
+  			value_out->uint8array = *pbuffer;
+      }
 
     	//fprintf(stderr, " == int8 array(size=%d)\n", size);
 			ok = _advance((uintptr_t*) pbuffer, size, premaining);
@@ -569,7 +595,7 @@ int platch_decode_value_std(uint8_t **pbuffer, size_t *premaining, struct std_va
 
     	//fprintf(stderr, " == list(size=%d)\n", size);
 			for (int i = 0; i < size; i++) {
-				ok = platch_decode_value_std(pbuffer, premaining, &value_out->list[i]);
+				ok = platch_decode_value_std(pbuffer, premaining, &value_out->list[i], extend_decode);
 				if (ok != 0) return ok;
 			}
 
@@ -587,17 +613,20 @@ int platch_decode_value_std(uint8_t **pbuffer, size_t *premaining, struct std_va
 
     	//fprintf(stderr, " == map(size=%d)\n", size);
 			for (int i = 0; i < size; i++) {
-				ok = platch_decode_value_std(pbuffer, premaining, &(value_out->keys[i]));
+				ok = platch_decode_value_std(pbuffer, premaining, &(value_out->keys[i]), extend_decode);
 				if (ok != 0) return ok;
 				
-				ok = platch_decode_value_std(pbuffer, premaining, &(value_out->values[i]));
+				ok = platch_decode_value_std(pbuffer, premaining, &(value_out->values[i]), extend_decode);
 				if (ok != 0) return ok;
 			}
 
 			break;
 		default:
-		  //fprintf(stderr, "platch_decode_value_std unhandled type: %d", type);
-			return EBADMSG;
+		  if (extend_decode == NULL) {
+			  fprintf(stderr, "platch_decode_value_std unhandled type: %d\n", type);
+				return EBADMSG;
+			}
+			return extend_decode(type, pbuffer, premaining, value_out);
 	}
 
 	return 0;
@@ -713,7 +742,7 @@ int platch_decode_json(char *string, struct json_value *out) {
 	return platch_decode_value_json(string, strlen(string), NULL, NULL, out);
 }
 
-int platch_decode(uint8_t *buffer, size_t size, enum platch_codec codec, struct platch_obj *object_out) {
+int platch_decode(uint8_t *buffer, size_t size, enum platch_codec codec, struct platch_obj *object_out, platch_decode_type_std extend_decode) {
 	struct json_value root_jsvalue;
 	uint8_t *buffer_cursor = buffer;
 	size_t   remaining = size;
@@ -789,21 +818,21 @@ int platch_decode(uint8_t *buffer, size_t size, enum platch_codec codec, struct 
 
 			break;
 		case kStandardMessageCodec:
-			ok = platch_decode_value_std(&buffer_cursor, &remaining, &object_out->std_value);
+			ok = platch_decode_value_std(&buffer_cursor, &remaining, &object_out->std_value, extend_decode);
 			if (ok != 0) return ok;
 			break;
 		case kStandardMethodCall: ;
 			struct std_value methodname;
 
-			ok = platch_decode_value_std(&buffer_cursor, &remaining, &methodname);
+			ok = platch_decode_value_std(&buffer_cursor, &remaining, &methodname, extend_decode);
 			if (ok != 0) return ok;
 			if (methodname.type != kStdString) {
 				platch_free_value_std(&methodname);
 				return EBADMSG;
 			}
 			object_out->method = methodname.string_value;
-
-			ok = platch_decode_value_std(&buffer_cursor, &remaining, &object_out->std_arg);
+			//fprintf(stderr, "method: %s\n", object_out->method);
+			ok = platch_decode_value_std(&buffer_cursor, &remaining, &object_out->std_arg, extend_decode);
 			if (ok != 0) return ok;
 
 			break;
@@ -816,7 +845,7 @@ int platch_decode(uint8_t *buffer, size_t size, enum platch_codec codec, struct 
 			//ok = _read8(&buffer_cursor, (uint8_t*) &object_out->success, &remaining);
 
 			if (object_out->success) {
-				ok = platch_decode_value_std(&buffer_cursor, &remaining, &(object_out->std_result));
+				ok = platch_decode_value_std(&buffer_cursor, &remaining, &(object_out->std_result), extend_decode);
 				if (ok != 0) {
 					//fprintf(stderr, "platch_decode:success result decode error: %d\n", ok);
 					return ok;
@@ -824,17 +853,17 @@ int platch_decode(uint8_t *buffer, size_t size, enum platch_codec codec, struct 
 			} else {
 				struct std_value error_code, error_msg;
 
-				ok = platch_decode_value_std(&buffer_cursor, &remaining, &error_code);
+				ok = platch_decode_value_std(&buffer_cursor, &remaining, &error_code, extend_decode);
 				if (ok != 0) {
 					//fprintf(stderr, "platch_decode:fail error_code decode error: %d\n", ok);
 					return ok;
 				}
-				ok = platch_decode_value_std(&buffer_cursor, &remaining, &error_msg);
+				ok = platch_decode_value_std(&buffer_cursor, &remaining, &error_msg, extend_decode);
 				if (ok != 0) {
 					//fprintf(stderr, "platch_decode:fail error_code error_msg error: %d\n", ok);
 					return ok;
 				}
-				ok = platch_decode_value_std(&buffer_cursor, &remaining, &(object_out->std_error_details));
+				ok = platch_decode_value_std(&buffer_cursor, &remaining, &(object_out->std_error_details), extend_decode);
 				if (ok != 0) {
 					//fprintf(stderr, "platch_decode:fail error_code error_details error: %d\n", ok);
 					return ok;
@@ -1018,14 +1047,14 @@ int platch_encode(struct platch_obj *object, uint8_t **buffer_out, size_t *size_
 }
 
 void platch_on_response_internal(const uint8_t *buffer, size_t size, void *userdata) {
-	fprintf(stderr, "[%d] platch_on_response_internal(size=%d, userdata=%x)\n",
-	    gettid(), size, userdata);
+	// fprintf(stderr, "[%d] platch_on_response_internal(size=%d, userdata=%x)\n",
+	//     gettid(), size, userdata);
 	struct platch_msg_resp_handler_data *handlerdata;
 	struct platch_obj object;
 	int ok;
 
 	handlerdata = (struct platch_msg_resp_handler_data *) userdata;
-	ok = platch_decode((uint8_t*) buffer, size, handlerdata->codec, &object);
+	ok = platch_decode((uint8_t*) buffer, size, handlerdata->codec, &object, NULL);
 	if (ok != 0) {
 		fprintf(stderr, "platch_on_response_internal:platch_decode error: %d\n", ok);
 		return;
@@ -1505,6 +1534,7 @@ bool stdvalue_equals(struct std_value *a, struct std_value *b) {
 		case kStdFloat64:
 			return a->float64_value == b->float64_value;
 		case kStdUInt8Array:
+    case kStdPreEncoded:    
 			if (a->size != b->size) return false;
 			if (a->uint8array == b->uint8array) return true;
 			for (int i = 0; i < a->size; i++)

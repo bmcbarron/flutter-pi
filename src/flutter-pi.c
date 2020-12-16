@@ -1,33 +1,30 @@
 #define  _GNU_SOURCE
 
-#include <ctype.h>
-#include <features.h>
-#include <dlfcn.h>
-#include <fcntl.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <string.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <stdbool.h>
-#include <pthread.h>
-#include <signal.h>
-#include <errno.h>
-#include <math.h>
-#include <limits.h>
-#include <float.h>
 #include <assert.h>
-#include <time.h>
-#include <getopt.h>
+#include <ctype.h>
+#include <dlfcn.h>
 #include <elf.h>
-#include <sys/eventfd.h>
-#include <sys/types.h>
-#include <sys/mman.h>
-#include <sys/types.h>
-#include <sys/stat.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <features.h>
+#include <float.h>
+#include <getopt.h>
+#include <limits.h>
 #include <linux/input.h>
-#include <unistd.h>
+#include <math.h>
+#include <pthread.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/eventfd.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <sys/syscall.h>
+#include <sys/types.h>
+#include <time.h>
+#include <unistd.h>
 
 #include <xf86drm.h>
 #include <xf86drmMode.h>
@@ -722,13 +719,17 @@ static void on_post_flutter_task(
 static int on_send_platform_message(
 	void *userdata
 ) {
-  fprintf(stderr, "[%d] on_send_platform_message(%x)\n", gettid(), userdata);
+  // fprintf(stderr, "[%d] on_send_platform_message(%x)\n", gettid(), userdata);
 	struct platform_message *msg = userdata;
 	FlutterEngineResult result = kSuccess;
 	if (msg->is_response) {
-		// fprintf(stderr, "FlutterEngineSendPlatformMessageResponse\n");
-		result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessageResponse(flutterpi.flutter.engine, msg->target_handle, msg->message, msg->message_size);
-	} else {
+          fprintf(stderr, "[%d] FlutterEngineSendPlatformMessageResponse(handle=%08x) before\n", gettid(),
+                  msg->target_handle);
+          result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessageResponse(
+              flutterpi.flutter.engine, msg->target_handle, msg->message, msg->message_size);
+          fprintf(stderr, "[%d] FlutterEngineSendPlatformMessageResponse(handle=%08x) after\n", gettid(),
+                  msg->target_handle);
+        } else {
   	FlutterPlatformMessageResponseHandle *response_handle = NULL;
 		if (msg->on_response) {
 			// fprintf(stderr, "FlutterPlatformMessageCreateResponseHandle on_response(%x)\n", msg->on_response_data);
@@ -738,18 +739,19 @@ static int on_send_platform_message(
 			}
 		}
 		if (result == kSuccess) {
-			// fprintf(stderr, "FlutterEngineSendPlatformMessage\n");
-			result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessage(
-				flutterpi.flutter.engine,
-				&(FlutterPlatformMessage) {
-					.struct_size = sizeof(FlutterPlatformMessage),
-					.channel = msg->target_channel,
-					.message = msg->message,
-					.message_size = msg->message_size,
-					.response_handle = response_handle
-				}
-			);
-		}
+                  fprintf(stderr, "[%d] FlutterEngineSendPlatformMessage(handle=%08x) before\n",
+                          gettid(), response_handle);
+                  result = flutterpi.flutter.libflutter_engine.FlutterEngineSendPlatformMessage(
+                      flutterpi.flutter.engine,
+                      &(FlutterPlatformMessage){.struct_size = sizeof(FlutterPlatformMessage),
+                                                .channel = msg->target_channel,
+                                                .message = msg->message,
+                                                .message_size = msg->message_size,
+                                                .response_handle = response_handle});
+                                fprintf(stderr,
+                                "[%d] FlutterEngineSendPlatformMessage(handle=%08x) after\n",
+                                        gettid(), response_handle);
+                }
 		if (msg->on_response) {
 			// fprintf(stderr, "FlutterPlatformMessageReleaseResponseHandle\n");
 			FlutterEngineResult result2 = flutterpi.flutter.libflutter_engine.FlutterPlatformMessageReleaseResponseHandle(flutterpi.flutter.engine, response_handle);

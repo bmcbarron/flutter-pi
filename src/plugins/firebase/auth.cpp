@@ -1,47 +1,14 @@
 #include "auth.h"
 
-#include "debug.h"
 #include "core.h"
+#include "firebase/auth.h"
 #include "util.h"
 
-firebase::auth::Auth* get_auth(std_value* args) {
-  auto app = get_app(args);
-  return app ? firebase::auth::Auth::GetAuth(app) : nullptr;
-}
+namespace firebase {
+namespace auth {
+using ::val;
 
-std::unique_ptr<Value> parsePhotoUrl(std::string photoUrl) {
-  if (photoUrl.empty()) {
-    return val();
-  }
-  return val(photoUrl);
-}
-
-std::unique_ptr<Value> parseUserInfo(firebase::auth::UserInfoInterface* userInfo) {
-  auto output = std::make_unique<ValueMap>();
-
-  output->add(val("displayName"), val(userInfo->display_name()));
-  output->add(val("email"), val(userInfo->email()));
-  output->add(val("phoneNumber"), val(userInfo->phone_number()));
-  output->add(val("photoURL"), parsePhotoUrl(userInfo->photo_url()));
-  output->add(val("providerId"), val(userInfo->provider_id()));
-  output->add(val("uid"), val(userInfo->uid()));
-
-  return std::move(output);
-}
-
-std::unique_ptr<Value> parseUserInfoList(
-    const std::vector<firebase::auth::UserInfoInterface *>& userInfoList) {
-  auto output = std::make_unique<ValueList>();
-  for (auto userInfo : userInfoList) {
-    // https://firebase.google.com/docs/reference/android/com/google/firebase/auth/FirebaseAuthProvider#PROVIDER_ID
-    if ("firebase" != userInfo->provider_id()) {
-      output->add(parseUserInfo(userInfo));
-    }
-  }
-  return std::move(output);
-}
-
-std::unique_ptr<Value> parseFirebaseUser(const firebase::auth::User* user) {
+std::unique_ptr<Value> val(const User* user) {
   if (user == nullptr) {
     return val();
   }
@@ -49,54 +16,73 @@ std::unique_ptr<Value> parseFirebaseUser(const firebase::auth::User* user) {
   auto output = std::make_unique<ValueMap>();
   auto metadata = std::make_unique<ValueMap>();
 
-  output->add(val("displayName"), val(user->display_name()));
-  output->add(val("email"), val(user->email()));
-  output->add(val("emailVerified"), val(user->is_email_verified()));
-  output->add(val("isAnonymous"), val(user->is_anonymous()));
+  output->set("displayName", user->display_name());
+  output->set("email", user->email());
+  output->set("emailVerified", user->is_email_verified());
+  output->set("isAnonymous", user->is_anonymous());
 
-  metadata->add(val("creationTime"), val(user->metadata().creation_timestamp));
-  metadata->add(val("lastSignInTime"), val(user->metadata().last_sign_in_timestamp));
-  
+  metadata->set("creationTime", user->metadata().creation_timestamp);
+  metadata->set("lastSignInTime", user->metadata().last_sign_in_timestamp);
+
   output->add(val("metadata"), std::move(metadata));
-  output->add(val("phoneNumber"), val(user->phone_number()));
-  output->add(val("photoURL"), parsePhotoUrl(user->photo_url()));
-  output->add(val("providerData"), parseUserInfoList(user->provider_data()));
-  output->add(val("refreshToken"), val(""));
-  output->add(val("uid"), val(user->uid()));
+  output->set("phoneNumber", user->phone_number());
+  output->add(val("photoURL"), val(user->photo_url(), false));
+  output->add(val("providerData"), val(user->provider_data()));
+  output->set("refreshToken", "");
+  output->set("uid", user->uid());
 
   return std::move(output);
 }
 
-std::unique_ptr<Value> parseAuthResult(const firebase::auth::User* user) {
-  if (user == nullptr) {
-    return val();
-  }
-
+std::unique_ptr<Value> val(UserInfoInterface* userInfo) {
   auto output = std::make_unique<ValueMap>();
 
-  output->add(val("additionalUserInfo"), val());
-  output->add(val("authCredential"), val());
-  output->add(val("user"), parseFirebaseUser(user));
+  output->set("displayName", userInfo->display_name());
+  output->set("email", userInfo->email());
+  output->set("phoneNumber", userInfo->phone_number());
+  output->set("photoURL", val(userInfo->photo_url(), false));
+  output->set("providerId", userInfo->provider_id());
+  output->set("uid", userInfo->uid());
 
   return std::move(output);
+}
+
+std::unique_ptr<Value> val(
+    const std::vector<UserInfoInterface*>& userInfoList) {
+  auto output = std::make_unique<ValueList>();
+  for (auto userInfo : userInfoList) {
+    // https://firebase.google.com/docs/reference/android/com/google/firebase/auth/FirebaseAuthProvider#PROVIDER_ID
+    if ("firebase" != userInfo->provider_id()) {
+      output->add(val(userInfo));
+    }
+  }
+  return std::move(output);
+}
+
+}  // namespace auth
+}  // namespace firebase
+
+firebase::auth::Auth* get_auth(std_value* args) {
+  auto app = get_app(args);
+  return app ? firebase::auth::Auth::GetAuth(app) : nullptr;
 }
 
 class AuthStateListenerImpl : public firebase::auth::AuthStateListener {
-public:
+ public:
   AuthStateListenerImpl(std::string channel, std::string appName)
       : channel(channel), appName(appName) {}
 
   virtual void OnAuthStateChanged(firebase::auth::Auth* auth) {
-      auto event = std::make_unique<ValueMap>();
-      event->add(val("appName"), val(appName));
+    auto event = std::make_unique<ValueMap>();
+    event->set("appName", appName);
 
-      auto user = auth->current_user();
-      event->add(val("user"), parseFirebaseUser(user));
+    auto user = auth->current_user();
+    event->add(val("user"), val(user));
 
-      invoke(channel, "Auth#authStateChanges", std::move(event));
+    invoke(channel, "Auth#authStateChanges", std::move(event));
   }
 
-private:
+ private:
   const std::string channel;
   const std::string appName;
 };
@@ -105,20 +91,26 @@ private:
 static std::map<int, firebase::auth::Credential*>* authCredentials;
 static std::map<std::string, firebase::auth::AuthStateListener*> authListeners;
 static std::map<std::string, firebase::auth::IdTokenListener*> idTokenListeners;
-static std::map<int, firebase::auth::PhoneAuthProvider::ForceResendingToken*> forceResendingTokens;
+static std::map<int, firebase::auth::PhoneAuthProvider::ForceResendingToken*>
+    forceResendingTokens;
 
-int AuthModule::OnMessage(platch_obj *object, FlutterPlatformMessageResponseHandle *handle) {
-  auto *args = &(object->std_arg);
+AuthModule::AuthModule() : Module("plugins.flutter.io/firebase_auth") {
+  Register("Auth#signInAnonymously", &AuthModule::SignInAnonymously);
+}
+
+int AuthModule::OnMessage(platch_obj* object,
+                          FlutterPlatformMessageResponseHandle* handle) {
+  auto* args = &(object->std_arg);
   if (args->type != kStdMap) {
     return error_message(handle, "arguments isn't a map");
   }
 
   if (strcmp(object->method, "Auth#registerChangeListeners") == 0) {
-
     auto appName = get_string(args, "appName");
     auto app = get_app(args);
     if (app == nullptr) {
-      return error_message(handle, "App (%s) not initialized.", appName.value_or("<default>").c_str());
+      return error_message(handle, "App (%s) not initialized.",
+                           appName.value_or("<default>").c_str());
     }
     auto auth = get_auth(args);
 
@@ -128,7 +120,6 @@ int AuthModule::OnMessage(platch_obj *object, FlutterPlatformMessageResponseHand
     if (authStateListener == nullptr) {
       auto newAuthStateListener = new AuthStateListenerImpl(channel, *appName);
 
-
       auth->AddAuthStateListener(newAuthStateListener);
       authListeners[*appName] = newAuthStateListener;
     }
@@ -136,111 +127,118 @@ int AuthModule::OnMessage(platch_obj *object, FlutterPlatformMessageResponseHand
     return success(handle);
 
   } else {
+    // case "Auth#registerChangeListeners":
+    // case "Auth#applyActionCode":
+    // case "Auth#checkActionCode":
+    // case "Auth#confirmPasswordReset":
+    // case "Auth#createUserWithEmailAndPassword":
+    // case "Auth#fetchSignInMethodsForEmail":
+    // case "Auth#sendPasswordResetEmail":
+    // case "Auth#sendSignInLinkToEmail":
+    // case "Auth#signInWithCredential":
+    // case "Auth#setLanguageCode":
+    // case "Auth#setSettings":
+    // case "Auth#signInAnonymously":
+    // case "Auth#signInWithCustomToken":
+    // case "Auth#signInWithEmailAndPassword":
+    // case "Auth#signInWithEmailLink":
+    // case "Auth#signOut":
+    // case "Auth#verifyPasswordResetCode":
+    // case "Auth#verifyPhoneNumber":
+    // case "User#delete":
+    // case "User#getIdToken":
+    // case "User#linkWithCredential":
+    // case "User#reauthenticateUserWithCredential":
+    // case "User#reload":
+    // case "User#sendEmailVerification":
+    // case "User#unlink":
+    // case "User#updateEmail":
+    // case "User#updatePassword":
+    // case "User#updatePhoneNumber":
+    // case "User#updateProfile":
+    // case "User#verifyBeforeUpdateEmail":
 
-  // case "Auth#registerChangeListeners":
-  // case "Auth#applyActionCode":
-  // case "Auth#checkActionCode":
-  // case "Auth#confirmPasswordReset":
-  // case "Auth#createUserWithEmailAndPassword":
-  // case "Auth#fetchSignInMethodsForEmail":
-  // case "Auth#sendPasswordResetEmail":
-  // case "Auth#sendSignInLinkToEmail":
-  // case "Auth#signInWithCredential":
-  // case "Auth#setLanguageCode":
-  // case "Auth#setSettings":
-  // case "Auth#signInAnonymously":
-  // case "Auth#signInWithCustomToken":
-  // case "Auth#signInWithEmailAndPassword":
-  // case "Auth#signInWithEmailLink":
-  // case "Auth#signOut":
-  // case "Auth#verifyPasswordResetCode":
-  // case "Auth#verifyPhoneNumber":
-  // case "User#delete":
-  // case "User#getIdToken":
-  // case "User#linkWithCredential":
-  // case "User#reauthenticateUserWithCredential":
-  // case "User#reload":
-  // case "User#sendEmailVerification":
-  // case "User#unlink":
-  // case "User#updateEmail":
-  // case "User#updatePassword":
-  // case "User#updatePhoneNumber":
-  // case "User#updateProfile":
-  // case "User#verifyBeforeUpdateEmail":
-  
-  // } else if (strcmp(object->method, "Firebase#initializeCore") == 0) {
+    // } else if (strcmp(object->method, "Firebase#initializeCore") == 0) {
 
-  //   // The default app values are read from google-services.json in the current working directory.
-  //   auto defaultApp = firebase::App::Create();
-  //   if (defaultApp == nullptr) {
-  //     return error(handle, "Failed to initialize Firebase.");
-  //   }
+    //   // The default app values are read from google-services.json in the
+    //   current working directory. auto defaultApp = firebase::App::Create();
+    //   if (defaultApp == nullptr) {
+    //     return error(handle, "Failed to initialize Firebase.");
+    //   }
 
-  //   std::vector<firebase::App *> apps;
-  //   apps.push_back(defaultApp);
+    //   std::vector<firebase::App *> apps;
+    //   apps.push_back(defaultApp);
 
-  //   auto result = std::make_unique<ValueList>();
-  //   for (auto &app : apps) {
-  //     auto appMap = std::make_unique<ValueMap>();
-  //     if (strcmp(firebase::kDefaultAppName, app->name()) == 0) {
-  //       // Flutter plugin and desktop API have different constants for the default.
-  //       appMap->add(val("name"), val("[DEFAULT]"));
-  //     } else {
-  //       appMap->add(val("name"), val(app->name()));
-  //     }
-  //     //appMap->add(val("isAutomaticDataCollectionEnabled"), val(app->IsDataCollectionDefaultEnabled()));
-  //     //appMap->add(val("pluginConstants"), val());
-  //     auto options = std::make_unique<ValueMap>();
-  //     options->add(val("apiKey"), val(app->options().api_key()));
-  //     options->add(val("appId"), val(app->options().app_id()));
-  //     options->add(val("messagingSenderId"), val(app->options().messaging_sender_id()));
-  //     options->add(val("projectId"), val(app->options().project_id()));
-  //     options->add(val("databaseURL"), val(app->options().database_url()));
-  //     options->add(val("storageBucket"), val(app->options().storage_bucket()));
-  //     options->add(val("trackingId"), val(app->options().ga_tracking_id()));
-  //     appMap->add(val("options"), std::move(options));
-  //     result->add(std::move(appMap));
-  //   }
-  //   return success(handle, std::move(result));
+    //   auto result = std::make_unique<ValueList>();
+    //   for (auto &app : apps) {
+    //     auto appMap = std::make_unique<ValueMap>();
+    //     if (strcmp(firebase::kDefaultAppName, app->name()) == 0) {
+    //       // Flutter plugin and desktop API have different constants for the
+    //       default. appMap->set("name", "[DEFAULT]");
+    //     } else {
+    //       appMap->set("name", app->name());
+    //     }
+    //     //appMap->set("isAutomaticDataCollectionEnabled",
+    //     app->IsDataCollectionDefaultEnabled());
+    //     //appMap->set("pluginConstants", );
+    //     auto options = std::make_unique<ValueMap>();
+    //     options->set("apiKey", app->options().api_key());
+    //     options->set("appId", app->options().app_id());
+    //     options->set("messagingSenderId",
+    //     app->options().messaging_sender_id()); options->set("projectId",
+    //     app->options().project_id()); options->set("databaseURL",
+    //     app->options().database_url()); options->set("storageBucket",
+    //     app->options().storage_bucket()); options->set("trackingId",
+    //     app->options().ga_tracking_id()); appMap->add(val("options"),
+    //     std::move(options)); result->add(std::move(appMap));
+    //   }
+    //   return success(handle, std::move(result));
 
-  // } else if (strcmp(object->method, "FirebaseApp#setAutomaticDataCollectionEnabled") == 0) {
+    // } else if (strcmp(object->method,
+    // "FirebaseApp#setAutomaticDataCollectionEnabled") == 0) {
 
-  //   // TODO
+    //   // TODO
 
-  // } else if (strcmp(object->method, "FirebaseApp#setAutomaticResourceManagementEnabled") == 0) {
+    // } else if (strcmp(object->method,
+    // "FirebaseApp#setAutomaticResourceManagementEnabled") == 0) {
 
-  //   // TODO
+    //   // TODO
 
-  // } else if (strcmp(object->method, "FirebaseApp#delete") == 0) {
+    // } else if (strcmp(object->method, "FirebaseApp#delete") == 0) {
 
-  //   // TODO
-
+    //   // TODO
   }
 
   return Module::OnMessage(object, handle);
 }
 
+std::unique_ptr<Value> signInAnonymouslyResult(firebase::auth::User* const * user) {
+  if (user == nullptr) {
+    return val();
+  }
 
-int AuthModule::SignInAnonymously(std_value *args, FlutterPlatformMessageResponseHandle *handle) {
+  auto output = std::make_unique<ValueMap>();
+
+  output->set("additionalUserInfo", val());
+  output->set("authCredential", val());
+  output->add(val("user"), val(*user));
+
+  return std::move(output);
+}
+
+int AuthModule::SignInAnonymously(
+    std_value* args, FlutterPlatformMessageResponseHandle* handle) {
   auto auth = get_auth(args);
+  if (auth == nullptr) {
+    return error_message(handle, "Unknown app.");
+  }
   auto future = auth->SignInAnonymouslyLastResult();
-  fprintf(stderr, "SignInAnonymouslyLastResult status=%d error=%d\n",
-          future.status(), future.error());
+  // fprintf(stderr, "SignInAnonymouslyLastResult status=%d error=%d\n",
+  //         future.status(), future.error());
   if (future.status() == firebase::kFutureStatusInvalid ||
       (future.status() == firebase::kFutureStatusComplete &&
-        future.error() != firebase::auth::kAuthErrorNone)) {
+       future.error() != firebase::auth::kAuthErrorNone)) {
     future = auth->SignInAnonymously();
   }
-  future.OnCompletion([] (
-      const firebase::Future<firebase::auth::User*>& result, void* userData) {
-    auto handle = static_cast<FlutterPlatformMessageResponseHandle *>(userData);
-    if (result.error() == firebase::auth::kAuthErrorNone) {
-      success(handle, parseAuthResult(*result.result()));
-    } else {
-      // TODO: Test failure by disabling anonymous login.
-      auto authError = static_cast<firebase::auth::AuthError>(result.error());
-      error(handle, std::to_string(authError), result.error_message());
-    }
-  }, handle);
-  return pending();
+  return Await(future, handle, signInAnonymouslyResult);
 }

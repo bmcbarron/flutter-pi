@@ -62,20 +62,21 @@ struct json_value {
 };
 
 enum std_value_type {
-    kStdNull = 0,
-    kStdTrue,
-    kStdFalse,
-    kStdInt32,
-    kStdInt64,
-    kStdLargeInt, // treat as kString
-    kStdFloat64,
-    kStdString,
-    kStdUInt8Array,
-    kStdInt32Array,
-    kStdInt64Array,
-    kStdFloat64Array,
-    kStdList,
-    kStdMap
+  kStdPreEncoded = -1,
+  kStdNull = 0,
+  kStdTrue,
+  kStdFalse,
+  kStdInt32,
+  kStdInt64,
+  kStdLargeInt, // treat as kString
+  kStdFloat64,
+  kStdString,
+  kStdUInt8Array,
+  kStdInt32Array,
+  kStdInt64Array,
+  kStdFloat64Array,
+  kStdList,
+  kStdMap
 };
 struct std_value {
     enum std_value_type type;
@@ -219,6 +220,12 @@ struct platch_obj {
 /// "userdata" is the userdata you gave to PlatformChannel_send.
 typedef int (*platch_msg_resp_callback)(struct platch_obj *object, void *userdata);
 
+/// A Callback that gets called to decode unknown standard codec types.
+typedef int (*platch_decode_type_std)(
+	enum std_value_type type,
+	uint8_t **pbuffer,
+	size_t *premaining,
+	struct std_value *value_out);
 
 /// decodes a platform message (represented by `buffer` and `size`) as the given codec,
 /// and puts the result into object_out.
@@ -229,7 +236,9 @@ typedef int (*platch_msg_resp_callback)(struct platch_obj *object, void *userdat
 /// is freed by flutter, the contents of object_out will in many cases be bogus.
 /// If you'd like object_out to be persistent and not depend on the lifetime of the buffer,
 /// you'd have to manually deep-copy it.
-int platch_decode(uint8_t *buffer, size_t size, enum platch_codec codec, struct platch_obj *object_out);
+int platch_decode(uint8_t *buffer, size_t size, enum platch_codec codec, struct platch_obj *object_out, platch_decode_type_std extend_decode);
+
+int platch_decode_value_std(uint8_t **pbuffer, size_t *premaining, struct std_value *value_out, platch_decode_type_std extend_decode);
 
 /// Encodes a generic ChannelObject into a buffer (that is, too, allocated by PlatformChannel_encode)
 /// A pointer to the buffer is put into buffer_out and the size of that buffer into size_out.
